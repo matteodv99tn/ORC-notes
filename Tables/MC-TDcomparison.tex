@@ -1,0 +1,10 @@
+\begin{table}[bt]
+	\centering 
+	\caption{comparison between Monte Carlo and temporal difference methods for solving a model-free prediction problem.} \label{tab:MCTDcomparison}
+	\begin{tabular}{M{7cm} M{7cm}}
+		\textbf{Monte Carlo} & \textbf{temporal difference} \\ \hline \hline \\ [-1.8ex]
+		must wait until the end of an episode to know the cost & can learn after every step \\
+		only works with episodic (terminating) environments & works also in non-terminating environment \\ 
+		the cost-to-go $\mathcal J_t$ is an unbiased estimate of $V^\pi(x_t)$ & target is a biased estimate of $V^\pi(x_t)$ 
+	\end{tabular}
+\end{table}

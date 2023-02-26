@@ -1,0 +1,94 @@
+\documentclass[11pt,a4paper,oneside]{book}
+
+\usepackage[width=15.50cm, height=24.00cm, top=3cm]{geometry}
+\usepackage[english]{babel}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{dsfont}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{cite}
+\usepackage{sidecap}
+\usepackage{paracol}
+\usepackage{fancyhdr}
+\usepackage{array}
+\usepackage[margin=1cm]{caption}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{subcaption}
+\usepackage[osf,sc]{mathpazo}
+\usepackage[scaled=0.90]{helvet}
+\usepackage[scaled=0.85]{beramono}
+\usepackage{placeins}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{mathtools}
+\usepackage{xparse}
+\usepackage{cancel}
+\usepackage{changepage}
+\usepackage{enumerate}
+
+\DeclareDocumentCommand{\jingAlgo}{ m O{\leftarrow} }{%
+	{\rlap{$#1$} \hphantom{$\hspace{1.3cm}$}$#2$}%
+}
+
+\newcommand{\algoAssign}[2]{{\jingAlgo{#1}[#2]}}
+
+\setcolumnwidth{0.48\linewidth}
+
+\fancyhead[L]{Page \thepage}
+\fancyhead[R]{Advanced Optimization-Based Robot Control}
+\fancyfoot[C]{}
+\pagestyle{fancy}
+
+\captionsetup{font = {it, small}, labelfont={color=NavyBlue, bf}}
+
+\newcolumntype{M}[1]{>{\centering\arraybackslash}m{#1}}
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+\lstdefinestyle{mystyle}{
+	backgroundcolor=\color{backcolour},   
+	commentstyle=\color{codegreen},
+	keywordstyle=\color{magenta},
+	numberstyle=\tiny\color{codegray},
+	stringstyle=\color{codepurple},
+	basicstyle=\ttfamily\footnotesize,
+	breakatwhitespace=false,         
+	breaklines=true,                 
+	captionpos=b,                    
+	keepspaces=true,                 
+	numbers=left,                    
+	numbersep=5pt,                  
+	showspaces=false,                
+	showstringspaces=false,
+	showtabs=false,                  
+	tabsize=2
+}
+
+\lstset{style=mystyle}
+
+\renewcommand{\epsilon}{\varepsilon}
+
+\renewcommand{\d}{\mathrm{d}}
+\newcommand{\diff}[2]{\frac{\d #1}{\d #2}}
+\newcommand{\pdiff}[2]{\frac{\partial #1}{\partial #2}}
+
+\renewenvironment{quote}{\vspace{2mm}\begin{adjustwidth}{1cm}{1cm} \begin{center} \guillemotleft \itshape } {\guillemotright \end{center} \end{adjustwidth} \vspace{2mm}}
+
+
+\newcommand{\prob}[1]{\textrm{Pr}\left\{#1\right\}}
+\newcommand{\stm}{\mathcal P}
+\newcommand{\X}{\mathcal X}
+\newcommand{\U}{\mathcal U}
+\renewcommand{\exp}[1]{\mathbb E\left\{#1\right\}}
+
+

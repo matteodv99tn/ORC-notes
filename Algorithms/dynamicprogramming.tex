@@ -1,0 +1,14 @@
+\begin{algorithm}[bt]
+	\caption{pseudo-code for solving a discretized optimal control problem using dynamic programming.}\label{alg:dynamicprogramming}
+	\begin{algorithmic}
+		\State initialize $V_n(x_N) = \ell_f(x_N)$ \Comment{look-up table that needs to be defined $\forall x_N$}
+		\State
+		\For{$i$ from $N-1$ to $0$}
+			\State $V_i(z) = \min_u \big(\ell(z,u) + V_{i+1}(f${{\footnotesize $(z,u)$}}$)\big)$
+		\EndFor
+		\State
+		\For{$i$ from $0$ to $N-1$} \Comment{at runtime}
+		\State $u^\star_i(x) = \min_u\big(\ell(x,u) + V_{i+1}(f${{\footnotesize $(z,u)$}}$)\big)$
+		\EndFor
+	\end{algorithmic}
+\end{algorithm}

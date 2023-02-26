@@ -1,0 +1,746 @@
+\chapter{Optimal Control}
+	\textit{Optimal control problems} (\textit{OCPs}) are constrained minimization problems in the form
+	\begin{equation} \label{eq:ocpstatement}
+	\begin{aligned}
+		\min_{x(\cdot), u(\cdot)} \quad & \int_0^\top  \ell\big(x(t), u(t), t)\big) \, \d t + \ell_f\big(x(T)\big) \\
+		\textrm{sub. to:} \quad & \dot x(t) = f\big(x(t), u(t), t\big) && \forall t \\
+		& g\big(x(t), u(t), t\big) \leq 0 && \forall t \\
+		& x(0) = x_0 
+	\end{aligned}
+	\end{equation}
+	where $\ell(\cdot)$ is the \textit{running cost}, $\ell_f(\cdot)$ is the \textit{terminal} (final) \textit{cost}, $f$ is the \textit{system's dynamic}, $g$ are the \textit{path constraints} and $x_0$ is the \textit{initial condition}. Moreover $x$ are the so called \textit{states} (that for manipulator are simply joint coordinates and velocities) while $u$ are the \textit{inputs} (joint torques). \\
+	For ease of notation the time-dependence of both $x$ and $u$ will now be dropped.
+	
+	Optimal control problems from a first look are very similar to quadratic programs like (\ref{eq:qp}) at \pageref{eq:qp}, however the main difference in this case is that both $x(t)$ and $u(t)$ are \textit{trajectories} that needs to be identified. In QPs we assumed in fact that a desired motion $y^{ref} (t)$ was given, while OCP solves a problem with theoretically infinitely many degrees of freedom that build the optimal trajectory $y^{ref}$ itself.
+	
+	\paragraph{Example: simple pendulum} Let's consider the classical example of a simple pendulum that we want to "swing up"; choosing $q$ in such a way that for $q=0$ the pendulum is in the upright configuration, then the simplest OCP that we can formulate for this problem is
+	\begin{align*}
+		\min_{x,\tau} \quad & q(T) = 0 \\
+		\textrm{sub. to:} \quad & I\ddot q = \tau + mg\sin(q)
+	\end{align*}
+	where the lonely constraint is just the system's dynamic. In this case we used just a terminal cost to enforce to reach the desired motion at the end of the time horizon. Even if this problem lead to the desired configuration, no "rules" on how the system's behavior are set, implying that there's no penalization for a fast convergence or high velocities.
+	
+	One way to reach the desired configuration in less time possible is to consider an integral cost that adds when we are out of target, considering the following OCP:
+	\begin{align*}
+		\min_{x,\tau} \quad & \int_0^\top  q^2\, \d t \\
+		\textrm{sub. to:} \quad & \begin{pmatrix}
+			\dot q \\ \ddot q
+		\end{pmatrix} = \begin{pmatrix}
+			\diff q t \\ I^{-1}(\tau + mg\sin q)
+		\end{pmatrix}
+	\end{align*}
+	where in this case the dynamic has been explicitly written in state-space after a transformation to first order given the state $x=(q,\dot q)$.\\
+	Solving this problem would lead to the generation of infinitely high torques and joint velocities in order to reach the target configuration in little time as possible to reduce the integral value.
+	
+	To avoid this problem we might add as integral costs also the square of the joint velocities and the torque, so the solver needs to find the perfect trade-off to reach the desired configuration in low time but without generating high velocities or torques:
+	\begin{align*}
+		\min_{x,\tau} \quad & \int_0^\top  \big(q^2 + \dot q^2 + \tau^2\big)\, \d t + 10^3 q(T) \\
+		\textrm{sub. to:} \quad & I\ddot q = \tau + mg\sin(q)
+	\end{align*}
+	In this case it has been added also a heavy-weighted terminal cost to ensure that the system actually reach the desired configuration (since the trade-off in the integral might lead to a non-requested solution).
+	
+	Using integral cost to bound velocities and torques is an easy way to solve the problem, but similar results can be obtained by setting hard constraints on some variables, i.e.
+	\begin{align*}
+		\min_{x,\tau} \quad & \int_0^\top  q^2\, \d t \\
+		\textrm{sub. to:} \quad & I\ddot q = \tau + mg\sin(q) \\
+		& |\tau|\leq \tau^{max} \\ & |\dot q| \leq \dot q^{max}
+	\end{align*}
+	
+	\paragraph{Optimal control method families} {Tables/ocpfamilies.tex}
+	Once an optimal control problem (\ref{eq:ocpstatement}) has been states, different families of solvers, described in table \ref{tab:ocpsolvers}, can be used to determine the optimal trajectories. In particular there are two "orthogonal" categorizations:
+	\begin{itemize}
+		\item \textit{continuous-time} solvers are searching for the continuous-time solution of the problem itself, while \textit{discrete-time} methods rely on a discretized (approximated) version of the same problem;
+		\item \textit{global} solvers are searching the global optimum for the problem, while \textit{local} are starting from a guess and reach the closes minima point; the latter of course is faster at runtime.
+	\end{itemize}
+	
+	For robotic applications mainly we use \textit{direct method} solvers; still we start introducing the other ones as they present critical aspect that are useful in understanding direct methods and the next chapter on \textit{Reinforcement Learning}.
+	
+\section{Dynamic programming} \label{sec:dynamicprogramming}
+	\textit{Dynamic programming} (\textit{DP}) methods are based on the \textit{Bellman's optimality principle} for which
+	\begin{quote}
+		given the optimal control starting from $A$ at time $t=0$ and reaching $B$ at $t=T$, then given any condition $\overline x$ in the optimal trajectory for $\overline t \in (0, T)$ then the the optimal solution from $\overline x$ to $B$ is still the same.
+	\end{quote}
+	This is a simple, yet powerful, concept after which all minimization algorithms have been developed on. In particular for what concerns dynamic programming problem (\ref{eq:ocpstatement}) is discretized in $N$ time-steps and rewritten as
+	\begin{equation} \label{eq:dpstatement}
+	\begin{aligned}
+		\min_{X,U} \quad & \sum_{i=0}^{N-1} \ell(x_i, u_i) \\
+		\textrm{sub. to:} \quad & x_{i+1} = f\big(x_i, u_i\big) \hspace{2cm} \forall i = 0,\dots, N-1
+	\end{aligned}
+	\end{equation}
+	where\footnote{in this case we assume that the state $x$ has $n$ dimensions while inputs $u$ have dimension $m$.} $X \in \mathds R^{n\times N}$ and $U \in \mathds R^{m \times N}$ are the matrices containing all the states and inputs at the discrete-time steps, i.e.
+	\begin{equation}
+		X = \begin{bmatrix}
+			& \\ x_1 & \dots & x_N \\ &
+		\end{bmatrix} \hspace{2cm}
+		U = \begin{bmatrix}
+			& \\ u_0 & \dots & u_{N-1} \\ &
+		\end{bmatrix}
+	\end{equation}
+
+	We point out that in (\ref{eq:dpstatement}) the terminal cost has been removed just to simplify the calculation of the following proof, but can be added at any time. \\ Furthermore we state that dynamic programming can be used only to solve \textit{unconstrained minimization problems} (or, better, the lonely constraint allowed is the one of the systems dynamic).
+	
+	\paragraph{Solution with QP} After discretization of (\ref{eq:ocpstatement}), (\ref{eq:dpstatement}) can be seen as a "simple" optimization problem in the variables $X,U$, similarly to (\ref{eq:qpocp}) at page \pageref{eq:qpocp}. 
+	
+	QP solvers can so be used to obtain the global optimum of the problem, however (\ref{eq:dpstatement}) suffers of dimensionality: increasing the number of states/inputs or improving the discretization $N$ heavily affects the computational load. Problems might become too large to be handled just with very simple scenarios, so solving (\ref{eq:dpstatement}) with QPs is not a feasible solution.
+	
+	
+	After discretization OCP (\ref{eq:dpstatement}) reduces to a simple optimization problem such (\ref{eq:qpocp}) at page \pageref{eq:qpocp}; the main issue of using QP solvers for this problem is the high dimensionality of the problem itself that scales badly with both the number of states/inputs and the number of discretization steps. 
+	
+	\paragraph{Solution with the Bellman's principle} To numerically solve (\ref{eq:dpstatement}), DP solvers exploit the Bellman's optimality principle; considering in fact $M \in \mathds N$ such that $0 < M < N$, then the overall problem can be casted to the following unconstrained minimization:
+	\[ \min_{X,U} \Bigg( \underbrace{\sum_{i=0}^{M-1} \Big( \ell(x_i,u_i) + \mathcal I\big(x_{i+1} - f(x_i,u_i)\big) \Big) }_{=C_0(X_{1:M},U_{0:M-1})} + \underbrace{\sum_{i=M}^{N-1} \Big( \ell(x_i,u_i) + \mathcal I\big(x_{i+1} - f(x_i,u_i)\big) \Big) }_{=C_M(x_M, X_{M+1:N},U_{M:N-1})} \Bigg) \tag{$\dagger$} \]
+	
+	In this expression it has been introduced the \textit{indicator function} $\mathcal I$, a mathematical "trick" used to convert the dynamic constraint into a cost; to ensure the condition, the system is infinitely penalized when such constraint isn't satisfied, so by considering
+	\begin{equation}
+		\mathcal I(x) = \begin{cases}
+			0 \qquad & \textrm{if } x = 0 \\
+			\infty & \textrm{otherwise}
+		\end{cases}
+	\end{equation}
+	
+	At this point we can rewrite ($\dagger$) as the sum of two independent minimization problems as follows:
+	\begin{equation} \label{eq:temp:4}
+		\min_{X_{1:M},U_{0:M-1}} C_0\big(X_{1:M},U_{0:M-1}\big) + \underbrace{\min_{X_{M+1:N},U_{M:N-1}} C_M\big(x_M, X_{M+1:N},U_{M:N-1}\big)}_{=V_M(x_M)}
+	\end{equation}
+	Here we observe that the first is a "canonical" minimization, while te second one is parametric in $x_M$, i.e. the value of the second minimization is affected by the state $x_M$ reached in the optimization of $C_0$.\\
+	Such second term is usually referred as the \textit{value function} $V_M(x_M)$ and evaluates the optimal cost that needs to be payed from time $t=M$ starting from a (generic) initial condition $x_M$, or, in other words, the "optimal cost-to-go given $x_M$ as initial condition. Exploiting the definition of the value function we have been able to split the initial problem ($\dagger$) into two (almost) independent minimization.
+	
+	In this way (\ref{eq:temp:4}) can be concisely rewritten as
+	\begin{equation}
+		V_0(x_0) = \min_{X_{1:M},U_{0:M-1}} C_0\big(X_{1:M}, U_{0:M-1}\big) + V_M(x_m)
+	\end{equation} 
+	i.e. "the cost that we pay starting from $t=0$ with $x_0$ initial condition and behaving optimally".\\
+	Choosing now $M=1$ allow us to rewrite the value function with a \textit{recursive formulation} as follows:
+	\begin{equation} \label{eq:valuefunction}
+		V_i(x_i) = \min_{u_i} \Big( \ell(x_i, u_i) + V_{i+1}\big(f(x_i, u_i)\big) \Big)
+	\end{equation}
+	
+	Here we see that the minimization is independent from the current state $x_i$ that is the parameter of the value function, but what needs to be determined is the value of $u_i$ that allows to reduce the overall cost of the current time-step combined with the cost-to-go.
+	
+	\paragraph{DP algorithm} \input{Algorithms/dynamicprogramming.tex}
+	Dynamic programming exploits the recursive definition of the value function (\ref{eq:valuefunction}) to solve the optimization problem; as presented in algorithm \ref{alg:dynamicprogramming}, the main idea is to regard $V$ as a look-up table where for each current state, the optimal cost-to-go is given. Such table is built backward in time, i.e. we start from the terminal cost (that's known given the parametric final state $x_N$) and, going backward in time, we compute each value in the table in order to minimize the overall cost-to-go given the current configuration.\\
+	Finally at run-time the optimal controls $u^\star$ are chosen in such a way that they minimize the cost-to-go toward the final target.
+	
+	The main advantage of this algorithm is that it doesn't provide an optimal trajectory, but rather a \textit{feedback policy}: once the look-up table is filled, then for each state the system reach at run-time the optimal behavior can be automatically determined. \\
+	This comes however with a big issue: the parametric minimization itself. This method to work requires the generation of a look-up table that suffers of dimensionality based on the discretization used to describe the states and the inputs as well as on time.
+	
+	In the simplified case where the systems dynamic is linear and the cost is simply a quadratic function in $x$ and $u$, then the value function $V$ is convex and a simpler closed-form solution can be obtained, leading to the sub-class problems of the so called \textit{(discrete-time) linear quadratic regulators} (\textit{LQR}), described in more depth in section \ref{sec:lqr} (page \pageref{sec:lqr}).
+	
+\section{Hamilton-Jacobi-Bellman}
+	As the name suggest, the \textit{Hamilton-Jacobi-Bellman} (\textit{HJB}) method is based on the Bellman's optimality principle and solves the optimal trajectory directly in continuous-time (while in dynamic programming a discretization was required). The underlying ides of HJB is to take DP and push the discretization step toward an infinitesimal value.
+	
+	Considering the value function (\ref{eq:valuefunction}) as been obtained from a $\delta$ time-step discretization, then $V(\cdot)$ depends just on the current time $t_i$ and the parametric state 
+	\[ V(t_i, x) = \min_u \ell_d(x,u) + V\big(t_{i+1}, f(x,u)\big) \]
+	where $\ell_d = \ell(x,u) \delta$ is the discretized cost. Pushing $\delta$ towards $0$, then the value function can be approximated by it's first Taylor series expansion as
+	\begin{align*}
+		V(t_i, x) & = \min_u \ell_d(x,u) + V(t_i,x) + \pdiff V t \delta + \pdiff V x \diff xt\delta \\
+		0 & = \min_u \ell(x,u)\delta + \dot V \delta + \nabla_x V(t_i,x) f(x,u) \delta
+	\end{align*}
+	that divided by the common term $\delta$ allows us to reach the \textit{Hamilton-Jacobi-Bellman equation}
+	\begin{equation} \label{eq:HJB}
+		-\dot V = \min_u \ell(x,u) + \nabla_x V\, f(x,u)
+	\end{equation}
+	
+	This expression models the Bellman's optimality principle in a continuous-time setting; the main issue is that (\ref{eq:HJB}) is not a ordinary differential equation (ODE), but a partial differential equation (PDE) since it depends on the differentiation of the unknown function $V$ with respect to both time $t$ and states $x$.
+	
+	Still if the dynamic is linear and the cost is quadratic, the problem simplifies to the solution of a continuous-time LQR (see sec. \ref{sec:lqr}).
+	
+	HJB solvers still exploits the backward integration from the final cost $V(T,x_T) = \ell_f(x_T)$ to determine the optimal feedback policy, but the problem is now harder to numerically integrate.
+	
+\section{Pontryagin minimum principle}
+	Methods based on the \textit{Pontryagin minimum principle} starts from the HJB equation (\ref{eq:HJB}) and is based on the observation that the optimal control $u^\star$ depends just on the gradient $\nabla_x V$ of the value function, and not by $V(\cdot)$ itself. Introducing the \textit{adjoint variable} $\lambda(t)$ defined as  $\Big(\nabla_x V\big(t, x(t)\big) \Big)^\top $, then the optimal control can be computed as
+	\begin{equation}
+		u^\star (t, x, \lambda) = \underbrace{\min_u \ell(x,u) + \lambda^\top  f(x,u)}
+	\end{equation}
+	
+	\textbf{TODO: Rivedere bene il PMP e capire come funziona e come l'equazione è  derivata}
+	
+\section{Direct methods}
+	\textit{Direct methods} (\textit{DM}) is a family of optimal control solvers highly used in robotic applications; they mainly search for local optima trajectories of a discretized optimal control problem from the continuous-time one.
+	
+	As seen so far, the main issue associated to the solution of optimal control problems is related to the high dimensionality (due to the time-continuity of the dynamics). The main idea in direct methods is to discretize the time axis and define a parametrization (such a piecewise constant function) for the inputs $u$ inside such interval.\\
+	After discretization the OCP becomes an optimization problem that can be solved by means of \textit{non-linear programming} (\textit{NLP}) \textit{solvers}. Direct methods works as follows:
+	\begin{itemize}
+		\item once the time-axis is discretized, we parametrize the trajectories of the decision variables of the problem (inputs and/or states); for this purpose we can use piece-wise constant functions or polynomials (or any other function);
+		\item we enforce the constraints (due to both dynamic and path constraints) on the defined time-grid of times $t_0 < t_1 < \dots  < t_N$.
+	\end{itemize}
+	
+	Intuitively this is the simplest algorithm that we might come up with (compared also with the solution previously discussed), however we have to deal with issue of \textit{over-discretization} (leading to a numerical cost growth) or \textit{under-discretization} (smaller dimensionality but at runtime some constraints might be violated since they are enforced only in few discrete time-steps).\\
+	With respect to all other presented solution, direct methods are overall faster and for this very reason are used in robotic also in feedback loop; for this last point it's crucial to develop algorithms that are able to solve OCPs fast enough to keep up with the robot's dynamic.
+	
+	There are mainly 3 algorithms for solving OCP problems with direct methods:
+	\begin{itemize}
+		\item \textit{single shooting} (or \textit{sequential}): the discretization is performed on the controls trajectory $u(t)$ that's so is the lonely decision variable; the state trajectory $x(t)$ is instead obtained by integration of the dynamics (that so can be removed from the constraints since the condition is always satisfied by construction);
+		\item \textit{collocation} (or \textit{simultaneous}): the discretization is performed on both inputs $u$ and states $x$; in this case the dynamic is used to enforce the constraint between such trajectories;
+		\item \textit{multiple shooting}: this can be regarded as a combination of both single shooting and collocation since the states $x$ are discretized on a coarser time-grid (with respect to the inputs $u$). Intermediate values for the states are compute by integration. Such method can be regarded as a sequence of single shootings.
+	\end{itemize}
+	
+	The choice of the method that should be used heavily depends on the NLP solver chosen; collocation leads to a problem with bigger matrices that are however sparser, so some software might exploit such aspect; conversely, single shooting have a lower system's dimensionality but require a good integrator to accurately compute the state trajectories.
+	
+\subsection{Single shooting}
+	In \textit{single shooting} we discretize only the control $u(t)$ on a fixed time-grid $0 = t_0 < t_1 < \dots < t_N = t_f$; for sake of simplicity $u$ is usually parametrized as piece-wise within the integration time-step. Called $y$ the decision variable (that describes the parametrization of $u$) and once the system can be integrated given such parameters, then the NLP problem that needs to be solved is of the form
+	\begin{equation} \label{eq:OCPsingleshooting}
+	\begin{aligned}
+		\min_y \quad & \int_0^{t_f} \ell\big( x(t_i,y), u(t_i,y), t \big)\, \d t + \ell_f\big(x(t_f,y)\big) \\
+		\textrm{sub. to:} \quad & g\big(x(t_i,y), u(t_i, y), t_i\big) && \quad \forall i \in [0,N-1]
+	\end{aligned}
+	\end{equation}
+	where in this case $g$ is the \textit{discretized path constraints}. The dynamic is not included since it's knowledge has been used to compute the state trajectory $x(t_i, y)$. Regarding the running cost as a time-dependent function of the form
+	\[ c(t) = \int_0^\top  \ell(\cdot)\, \d t \]
+	then the related computation can be reduced to the integration of the following ordinary differential equation:
+	\[ \begin{cases}
+		\dot c(t) = \ell(\cdot) \\ c(0) = 0
+	\end{cases} \]
+	
+	Calling $\overline x = (x, c)$ the \textit{augmented state vector}, then the overall ordinary differential equation that must be integrated to solve the OCP (\ref{eq:OCPsingleshooting}) is
+	\begin{equation}
+		\dot{\overline x} = \begin{pmatrix}
+			f(x,u,t) \\ \ell (x, u)
+		\end{pmatrix}
+	\end{equation}
+	
+	Once this expression is integrated by means of an integrator and its derivative with respect to the decision variable $u$ is computed, then NLP solvers might be able to converge to the local minima by exploiting a gradient descent.
+	
+\subsection{Numerical integration}
+	Given a ordinary differential equation in the form $\dot x = f(x, t)$ subjected to an initial condition $x(0) = x_0$, then numerical integrators deals with the computation of $x(t)$ for all times $t\in [0,T]$; $f$ in this case is not written as dependent from the input  since when we evaluate the dynamic $u$ has a fixed and known value, i.e. integration is not performed parametrically.
+	
+	As long as $f$ is \textit{Lipshitz continuous} (a stronger condition then requiring a continuous first derivative of $f$), then it is proven that the ODE has a unique solution in the neighborhood of the initial point. Based on this assumption we can numerically integrate by using different algorithms, such the Euler method.
+	
+	\paragraph{Euler method} Recalling the formal definition of the incremental ratio
+	\[ \dot x = f(x, t) = \lim_{h\rightarrow 0} \frac{x(t+h) - x(t)}{h} \]
+	the Euler method uses the approximation for a "sufficiently small" $h$ to compute the next state $x(t+h)$ given the initial condition $x(t)$ simply by reverting the equation:
+	\begin{equation} \label{eq:eulerintegration}
+		x(t+h) \approx x(t) + h\, f(x, t)
+	\end{equation}
+	
+	This method to be accurate requires $h$ to be "very small": accuracy is so inversely proportional to the numerical time complexity (to be more accurate we need lower $h$, increasing the number of required evaluation to cover the same time span). As we'll see better later, this is called a "$1^{st}$ order method", so with a minimum consistency; in general higher the order, more favorable is the trade-off between time complexity and accuracy.
+	
+	\paragraph{Midpoint method} The midpoint method is another integration algorithm that falls in the category of the $2^{nd}$ order. Once we compute
+	\[ K_1 = f\big(x(t),t\big) \]
+	and
+	\[ K_2 = f \left( x(t) + \frac h 2 K_1, t + \frac h2\right) \]
+	then the state at the next time-step is approximated by the formula
+	\begin{equation}
+		x(t+h) \approx x(t) + h K_2
+	\end{equation}
+
+	The idea behind this formula is that first we compute the slope $K_1$ and use half of a Euler step to approximate a "mean" slope $K_2$ inside the discretization time-step. Given the same value of $h$, the midpoint method is usually more accurate then Euler, but it also requires a double value of function $f$ evaluation (2 vs 1).
+	
+	\paragraph{Properties of numerical integration} Given an ODE with exact trajectory solution $x(t)$ and an integrator whose output is described by $\hat x\big(t,t_0, x(t_0)\big)$ where $t_0, x(t_0)$ are respectively the time and initial condition for starting the integration, then we define the \textit{local error} $e(\cdot)$ as
+	\begin{equation} \label{eq:localerror}
+		e(t) = x(t) - \hat x\big(t, t-h, x(t-h)\big)
+	\end{equation}
+	while the \textit{global error} $E(\cdot)$ is simply
+	\begin{equation}
+		E(t) = x(t) - \hat x\big(t,t_0, x(t_0)\big)
+	\end{equation}
+	As the name suggests, the global error evaluates the "distance" between the truth value and the integrated given the same initial condition, while the local error measures the distance considering as initial true condition just one time-step ahead.
+	
+	With this definitions any "good" numerical integration scheme must satisfy the following 3 conditions:
+	\begin{enumerate}[\itshape i)]
+		\item \textit{convergence}, i.e. $\lim_{h\rightarrow 0} E(t) = 0$;
+		\item \textit{consistency order}: $\lim_{h\rightarrow 0} e(t) = \mathcal O(h^{p+1})$ where $p > 0$ is the \textit{order} of the numerical integration; such parameter is key since it rules the asymptotic convergence of the system;
+		\item \textit{stability}. This concept is now well defined, but intuitively we can say that the global error $E$ must be bounded for $t \rightarrow \infty$; this requirement is important especially for so called "stiff" ODEs.
+ 	\end{enumerate}
+	
+	\paragraph{Consistency order of the explicit Euler method} Rewriting the local error (\ref{eq:localerror}) in a more readable index notation $e(t) = x_{n+1} - \hat x_{n+1}(x_n) = e_{n+1}$, the definition of $\hat x_{n+1}$ given by the Euler method is simply $x_n - h f(x_n, t_n)$. Considering now the Taylor series expansion of the true solution around $x_n$ that's
+	\[ x_{n+1} = x_n + h \dot x_n + \mathcal O\big(h^2\big) \]
+	then we can show that
+	\begin{align*}
+		e_{n+1} & = x_{n+1} - \hat x_{n+1} = x_n + h \dot x_n + \mathcal O\big(h^2\big) - x_n - h \, f(x_n, t_n) \\
+		& = \mathcal O \big(h^2\big)
+	\end{align*}
+	proving that the consistency order is actually $p = 1$.
+	
+	\paragraph{Runge-Kutta methods} Both Euler and midpoint methods can be regarded as "instantiations" of the more general definition of the \textit{Runge-Kutta} (\textit{RK}) \textit{methods}, one-step integration algorithms of the form
+	\begin{equation}
+		x_{n+1} = x_n + h \sum_{i=0}^q b_i K_i
+	\end{equation}
+	with
+	\[ K_i = f\left( x_n + h \sum_{i=0}^q a_{ij} K_j, t_n + c_ih \right) \]
+	where $a_{ij},b_i,c_i$ are all tabled coefficients; $q$ is the so called \textit{order} of the Runge-Kutta method that in general might differ from the consistency order $p$. Usually we call \textit{RK4} a Runge-Kutta method of order $q=4$.\\
+	It's true that $p \leq q$, and in particular for $q \geq 5$ the consistency order is always lower than the method's one.
+	
+	As example, the explicit Euler method is a RK1 integration scheme with $b_1 = 1$, $a_{11} = 1$ and $c_1 = 0$; the midpoint integrator is instead a RK2 scheme.
+	
+	Every-time it happens that $a_{ij} = 0$ for all $j \geq i$, then the \textit{method} is said \textit{explicit} and the integration can be performed by simple evaluations of the function $f$ (while for \textit{implicit methods} it is required to solve an implicit non-linear problem in $x_{t+1}$, increasing the cost complexity).
+	
+	Runge-Kutta methods are unequivocally described by the so called \textit{Butcher tableaus} storing the parameters for the integration in a form:
+	\begin{equation}
+	\begin{array}{c | c c c}
+		c_1 & a_{11} & \dots & a_{1q} \\
+		\vdots & \vdots & \ddots \\
+		c_q & a_{q1} & & a_{qq} \\ \hline
+		& b_1 & \dots & b_q
+	\end{array}
+	\end{equation}
+	
+	The best trade-off between accuracy and numerical complexity is favorable up to order $q=4$ (to ge a consistency order $p=5$ it is required at a RK6 method); one of the most widely used Buther tableau is the RK4 explicit method described as
+	\[ \begin{array}{c | c c c c}
+		0 & 0 & 0 & 0 & 0 \\
+		\frac 12 & \frac 12 & 0 & 0 & 0 \\
+		\frac 12 & 0 & \frac 12 & 0 & 0 \\
+		1 & 0 & 0 & 1 & 0 \\ \hline 
+		 & \frac 1 6 & \frac 13 & \frac 13 & \frac 16 
+	\end{array}\]
+
+\subsection{Computation of sensitivities}
+	Optimal control problems, as already mentioned, are usually solved exploiting gradient-based search thus the computation of the derivative is a key concept. Any OCP (\ref{eq:ocpstatement}) has a cost that needs to be minimized: this value usually depends on the state trajectory $x(t)$ that is computed by integration of the dynamics considering the input $u(t)$. \\
+	In this section we will deal with the computation of the \textit{sensitivities}, so the derivative of the result of an integration.
+	
+	Given the sequence of piecewise constant inputs $u(t) = y_i$ (for any $t\in[t_i,t_{i+1}]$), the states are computed by integration of $\dot x = f(x,y_i, t)$ for all $t\in[t_i,t_{i+1}]$. Exploiting the Euler discretization, the cost function can be approximated as
+	\[ c(y) = \int_0^\top  \ell\big(x(t),u(t), t\big) \, \d t + \ell_f \big(x(T)\big) \approx \sum_{i=0}^{N-1} \ell(x_i, y_i) h + \ell_f(x_N) \]
+	
+	In order to apply numerical optimization we can compute the gradient of $c(\cdot)$ with respect to the optimization variable $y$ as
+	\begin{equation} \label{eq:rksensitivity}
+	\begin{aligned}
+		\diff {c(y)} y & = \sum_{i=0}^{N-1} \diff{\ell(x_i,y_i)}{y} h + \diff{\ell_f(x_N)}{y} \\
+		& = \sum_{i=0}^{N-1} \left( \pdiff \ell {x_i} \diff{x_i}{y_i} + \pdiff{\ell}{y_i} \right) h + \pdiff{\ell_f}{x_N} \diff{x_N}{y_i}
+	\end{aligned}
+	\end{equation}
+
+	Typically the cost function $\ell$ is relatively simple and it's partial derivative can be easily obtained analytically (since we can design $\ell$); the main issue in (\ref{eq:rksensitivity}) is that the derivative $\d x_i / \d y_i$ depends on the numerical integration of the state. \\
+	Since Runge-Kutta methods are single-step integration methods, they can be described using a so called \textit{integration function} $\phi$ that determines the next step given just the current state and the applied input:
+	\[ x_{i+1} = \phi_i (x_i,y_i) \]
+	whose derivative is simply
+	\begin{equation} \label{eq:rkdiff}
+		\diff {x_{i+1}} y = \pdiff {\phi_i}{x_i} \diff{x_i}{y} + \pdiff {\phi_i}y
+	\end{equation}
+	
+	In this equation we might observe that the derivative of $x_{i+1}$ depends on it's previous state $x_i$; in this case if we firstly fix $\d x_0 / \d y = 0$ (since the initial state is known and do not depend on the applied input), then each next derivative can be computed integrating forward in time. Furthermore we can see that the matrix
+	\[ \pdiff{\phi_i}{y} = \Bigg[ \pdiff{\phi_i}{y_0} \quad \pdiff{\phi_i}{y_1} \quad \dots \quad \pdiff{\phi_i}{y_{N-1}}  \Bigg] \]
+	is sparse, since the next state depends just on the currently applied input (not the others), implying
+	\[ \pdiff{\phi_i}{y_j} = 0 \qquad \forall i \neq j \]
+	
+	The only element that still needs to be covered in (\ref{eq:rkdiff}) is the derivative $\partial \phi_i/\partial x_i$ whose value depends just on the integration scheme used.
+	
+	\paragraph{Sensitivities of the explicit Euler method} Let's consider the Euler method (\ref{eq:eulerintegration}) defined by the integrator function
+	\[ \phi(x,u) = x + h\, f(x,u) \]
+	In this case the sensitivities can be easily computed from the analytical definition as
+	\[ \pdiff \phi x = I + h \pdiff f x \hspace{2cm} \pdiff \phi u = h \pdiff fu \]
+	
+\subsection{Collocation}
+	\textit{Collocation} is another category of direct methods that discretizes also the states $x(t)$ (in this case still with piecewise constant functions for simplicity). Calling
+	\[ x(t) = s_i \qquad \forall t \in [t_i,t_{i+1}] \]
+	the discretized values for the states, then the dynamic $\dot x = f(x,u)$ can be approximated using the Euler method as
+	\begin{equation}
+		\underbrace{ \overbrace{\frac{s_{i+1} - s_i}{t_{i+1} - t_i}}^{\approx \dot x} - f\Big( \overbrace{\frac{s_{i+1} + s_i}{2}}^{\approx x}, y_i \Big)}_{= c_i(s_i, s_{i+1}, y_i)} = 0 \qquad \forall i
+	\end{equation}
+	
+	Considering this discretized problem, the cost integral for a given time-step can be regarded as
+	\[ \int_{t_i}^{t_{i+1}} \ell\big(x(t), u(t)\big) \, \d t \approx \ell\left(\frac{s_i + s_{i+1}}{2}, y_i\right) \big(t_{i+1} - t_i\big) = \ell_i\big(s_i, s_{i+1}, y_i\big) \]
+	
+	Based on the presented discretization of the OCP (note that this is just one of the infinitely many that we might come up with), then an approximation of the problem that can be solved using NLP software is
+	\begin{equation}
+	\begin{aligned}
+		\min_{s,y} \quad & \sum_{i=0}^{N-1} \ell_i\big(s_i, s_{i+1},y_i\big) + \ell_f\big(s_N\big) \\
+		\textrm{sub. to:} \quad & s_0 - x_0 = 0 &\qquad& {\footnotesize\textrm{: initial condition}} \\
+		& c_i\big(s_i, s_{i+1}, y_i\big) = 0 &\qquad& {\footnotesize\textrm{: discretized dynamics}} \\
+		& g_i\big(s_i, y_i, t_i\big) = 0 &\qquad& {\footnotesize\textrm{: discretized constraints}}
+	\end{aligned}
+	\end{equation}
+	
+	This problem has an higher number of decision variables with respect to single shooting (since we have to add the cardinality of $y$ with the one of $s$), but comes with the advantage of having a \textit{sparser problem}: each constraint in fact depends just con the current position and, at worst, a neighbor state, i.e.
+	\[ \frac{\partial^2 c_i}{\partial s_i \partial s_{i\pm j}} = 0 \qquad \forall j > 1 \]
+	
+\subsection{Multiple shooting}
+	\textit{Multiple shooting} is a direct method that can be regarded as a combination of single shooing and collocation; from the latter it inherits the fact that the states are discretized, but in this case on a coarser time-grid with respect to the one of the controls. Inside the "bigger" state time-chunk, the dynamic is integrated to have a smooth trajectory. \\
+	By doing so no dynamic constraint should be considered in the OCP problem, but we have to ensure the state continuity $x_i(t_i) = s_i$ at each boundary of the state time-axis.
+	
+	\textbf{TODO: migliorare spiegazione e aggiungere}
+	
+	
+\section{Linear quadratic regulator} \label{sec:lqr}
+	Given a linear discrete-time system described as
+	\begin{equation} \label{eq:lineardynamics}
+		x_{t+1} = A x_t + B u_t
+	\end{equation}
+	we want to design a set of controls $u_i$ for which:
+	\begin{itemize}
+		\item the resulting state trajectory $x(t)$ is "small", staying close to zero leading to a good regulation (subtly implying that $x(t)$ is modeling the error from a reference target);
+		\item the control sequence $u_i$ is also "small" in order to reduce the required actuator effort.
+	\end{itemize}
+
+	Intuitively such conditions are in contrast since one can't have a good regulation performance without asking a minimum amount of effort, so a trade-off between the two requirements is necessary. \textit{Linear quadratic regulators} (\textit{LQR}) deals with this by solving the following unconstrained minimization problem with costs in quadratic form:
+	\begin{equation} \label{eq:LQRproblem}
+	\begin{aligned}
+		\min_{U,X} \quad & \mathcal J\big(U,X\big) = \sum_{i=0}^{N-1} \Big( x_i^\top  Q x_i + u_i^\top  R u_i \Big) + x_N^\top  Q_f x_N\\
+		\textrm{sub. to:} \quad & x_{t+1} = A x_t + B u_t
+	\end{aligned}
+	\end{equation}
+	where $Q,Q_f \geq 0$ and $R>0$ are all symmetric matrices weighting respectively the cost of the states and the controls. Choosing $Q$ "big" (with respect to $R$) tells that is more important having a good system regulation, while if $R$ is dominant we want to rather bound the actuator effort instead of the regulation performance.
+	
+	We can observe that (\ref{eq:LQRproblem}) has a quadratic cost and is subjected to a linear constraint, so it's a \textit{convex QP problem} as seen in sec. \ref{sec:qp} (page \pageref{sec:qp}). Describing the whole state dynamic in a vector $X=(x_0,\dots, x_N)$ it can be shown that
+	\[ \tag{$\dagger$}
+	\underbrace{\begin{pmatrix}
+			x_0 \\ x_1 \\ x_2 \\ \vdots \\ x_N
+	\end{pmatrix}}_{X} = \underbrace{\begin{bmatrix}
+		0 \\
+		B & 0 \\
+		AB & B  & 0 \\
+		\vdots & \vdots & & \ddots \\ 
+		A^{N-1}B & A^{N-2}B & & B & 0 
+	\end{bmatrix}}_G 
+	\underbrace{\begin{pmatrix}
+		u_0 \\ u_1 \\ u_2 \\ \vdots \\ u_{N-1}
+	\end{pmatrix}}_U + 
+	\underbrace{\begin{bmatrix}
+		I \\ A \\ A^2 \\ \vdots \\ A^N
+	\end{bmatrix}}_H x_0
+	\]
+	where the matrix $G$ has been obtained recursively applying (\ref{eq:lineardynamics}) and collecting all elements in a matrix form. With this notation (\ref{eq:LQRproblem}) can be compactly rewritten as
+	\begin{equation} \label{eq:LQRcompact}
+		\begin{aligned}
+			\min_{U,X} \quad & \mathcal J\big(U,X\big) = \|\overline Q X\|^2 + \|\overline R U \|^2 \\
+			\textrm{sub. to:} \quad & x_{t+1} = A x_t + B u_t
+		\end{aligned}
+	\end{equation}
+	where
+	\[ \overline Q = \textrm{diag}\big\{ Q^{1/2}, \dots, Q^{1/2}, Q_f^{1/2} \big\} \qquad \overline R = \textrm{diag}\big\{ R^{1/2}, \dots, R^{1/2}\big\} \]
+	
+	Moreover we can substitute the definition of the dynamics ($\dagger$) and restate the problem as the following unconstrained minimization:\\
+	\begin{equation}
+		\min_U \mathcal J(U) = \big\| \overline Q(GU+Hx_0) \big\|^2 + \big\|\overline RU\big\|^2 = \left\| \begin{bmatrix}
+			\overline QG \\ \overline R
+		\end{bmatrix} U + \begin{bmatrix}
+		 	\overline Q H x_0 \\ 0
+		\end{bmatrix} \right\|^2
+	\end{equation}
+	
+	Recalling (\ref{eq:lspsol}), page \pageref{eq:lspsol}, the solution of this problem can be obtained by means of the Moore-Penrose pseudo-inverse; since the matrix that needs to be inverted has size $N(n+m) \times Nm$, the overall numerical complexity for QP solvers is $\mathcal O\big(N^3 nm^3\big)$.
+	
+	Solving such problem with QP solvers is highly inefficient, so for this reason dynamic programming (see sec. \ref{sec:dynamicprogramming}, page \pageref{sec:dynamicprogramming}) is usually used to reduce the computational cost to $\mathcal O(Nn^3)$. The idea is that if we are able, given the value function $V_{t+1}(z)$, to compute $V_t(z)$, then we can start from $V_N$ and go backward in time to compute the optimal trajectory.\\
+	We start off defining the value function as
+	\begin{align*}
+		V_t(z) = \min_{w, U_{t+1}}\quad & z^\top  Q z + w^\top Rw + \sum_{k=t+1}^{N-1} \Big( x_k^\top  Q x_k + u_k^\top  R u_k \Big) + x_N^\top  Q_f x_N \\
+		\textrm{sub. to:} \quad & x_{k+1} = Ax_k + B u_k \\ & u_t = w
+	\end{align*}
+	and we observe the recursive definition
+	\begin{equation} \label{eq:LQRvaluefunction}
+		V_t(z) = \min_w \underbrace{z^\top Qz + w^\top Rw}_{\ell(z,u)} + V_{t+1}\big(\underbrace{Az+Bw}_{f(z,w)}\big)
+	\end{equation}
+	Observing the similarity with (\ref{eq:temp:4}), $\ell$ is the cost that we pay at the current time considering the input $u_t = w$, while the second term is the cost-to-go given the state that we land in. The main advantage now in LQR (with respect to the general case of dynamic programming) is the linear dynamic that will help us reach an easier solution. 
+	
+	By construction the value function $V_{t+1}$ can always be regarded as quadratic and simplified to the notation
+	\[ V_{t+1}(z) = z^\top  P_{t+1}z \qquad \textrm{with } P_{t+1} = P_{t+1}^\top  \geq 0,\ P_N = Q_f \]
+	Observed that this definition surely holds for the last time-step, we can elaborate (\ref{eq:LQRvaluefunction}) as
+	\begin{align*}
+		V_t(z) & = \min_w \big(z^\top  Q z + w^\top Rw + V_{t+1}(Az+Bw)\big) \\
+		& = z^\top  Q z + \min_w \Big(w^\top Rw + \big(Az + Bw\big)^\top  P_{t+1}\big(Az + Bw\big)\Big) \\
+		& = z^\top Q z + \min_w\big(w^\top(R + B^\top P_{t+1}B)w + 2z^\top A^\top P_{t+1}Bw\big) + z^\top A^\top P_{t+1} A z \\
+		& = z^\top\big(Q + A^\top P_{t+1}A\big) z + \min_w \big(\underbrace{w^\top H w + 2 g^\top w}_{f(w)}\big)
+	\end{align*}
+	where to simplify the notation it has been used $H = R + B^\top P_{t+1}B$ and $g^\top = z^\top A^\top P_{t+1} B$. From the last equality we clearly see that the value function always have a fixed cost based on the parameter $z$, while the second term can actually be minimized in the control input $w$. Being $f$ a convex quadratic function we can exploit \ref{eq:lspsol} to determine the optimal control input as
+	\begin{equation} \label{eq:LQRinput}
+		w^\star = -H^{-1} g = - \big(R + B^\top P_{t+1} B\big)^{-1} B^\top P_{t+1}A z = K_t z
+	\end{equation}
+	
+	Plugging back the optimal solution inside the definition of the value function provides
+	\begin{equation}
+	\begin{aligned}
+		V_t(z) & = z^\top \big(Q + A^\top P_{t+1}A\big) z + g^\top H^{-1} HH^{-1} - 2g^\top H^{-1}g \\
+		& = z^\top \underbrace{\big(QA^\top P_{t+1} A - A^\top P_{t+1}BH^{-1}B^\top P_{t+1}A\big)}_{P_t=P_t^T \geq 0} z
+	\end{aligned}
+	\end{equation}
+	With this we proved that if $V_{t+1}$ is a quadratic function, then also $V_t$ must be so; furthermore it happens that $P_t$ is always symmetric and semi-positive definite. 
+	
+	The main advantage of solving an LQR problem with dynamic programming is that the \textit{optimal control input} $u$ turns out to be not an \textit{open-loop trajectory}, but a \textit{linear feedback policy} that depends on a time-varying matrix $K_t$ as shown in (\ref{eq:LQRinput}).
+	
+	\input{Algorithms/LQR.tex}
+	Algorithm \ref{alg:LQR} shows the pseudo-code to solve the LQR problem, summarizing the procedure yet described.
+	
+	\paragraph{Time-varying system} The definition of the LQR algorithm works fine also with time-varying systems $x_{t+1} = A_t x_t + B_t u_t$; the lonely drawback is in this case is that no steady-state regulation exists.
+	
+\subsection{Steady-state regulation}
+	While running the algorithm we usually observe that for $N$ "large", the majority of the time-steps shows a constant feedback matrix $K_t$ that converges to zero only toward the end of the OCP time horizon. This initial constant solution is called \textit{steady-state regulator} that's associated to the solution of the \textit{discrete-time algebraic Riccati equation} defined as
+	\begin{equation}
+		P_{ss} = Q + A^\top P_{ss} A - A^\top P_{ss} B \big(RB^\top P_{ss}B\big)^{-1} B^\top P_{ss} A
+	\end{equation}
+	
+	The solution of $P_{ss}$ can be obtained by means of direct or recursive method and allows to compute the constant feedback 
+	\[ K_{ss} = -\big(R + B^\top P_{ss} B\big)^{-1} B^\top P_{ss}A \]
+	that can be use as long as we are not close to the end of the time horizon.
+
+\subsection{Inhomogeneous systems and tracking problems}
+	The linear quadratic regulator can be solved also to the extend problem of \textit{inhomogeneous systems}, so when at both cost and dynamic we add a fixed term, so considering the following NLP:
+	\begin{equation} \label{eq:LQRinhomogeneous}
+	\begin{aligned}
+		\min_{U,X} \quad & = \sum_{t=0}^{N-1} \begin{pmatrix}
+			x_t^\top & u_t^\top & 1
+		\end{pmatrix} \begin{bmatrix}
+			Q_t & S_t & q_t \\ S_t^\top & R_t & s_t \\ q_t^\top & s_t^\top & 0
+		\end{bmatrix} \begin{pmatrix}
+			x_t \\ u_t \\ 1
+		\end{pmatrix}
+		+ \begin{pmatrix}
+			x_N^\top & 1
+		\end{pmatrix} \begin{bmatrix}
+			Q_f & q_N \\ q_N^\top & 0 
+		\end{bmatrix} \begin{pmatrix}
+			x_N \\ 1
+		\end{pmatrix} \\
+		\textrm{sub. to:} \quad & x_{i+1} = A x_i + B u_i + c_i \\ & x_0 = x^\textrm{init}	
+	\end{aligned}
+	\end{equation}
+	
+	The solution of such regulator is achieved by applying a proper transformation that turns the problem into the yet studied formulation in (\ref{eq:LQRproblem}). Defining the "augmented states" $\overline x = (x, 1)$, then the discrete-time dynamic can be rewritten as
+	\[ \overline x_{t+1} = \begin{pmatrix}
+		x_{t+1} \\ 1 
+	\end{pmatrix} = \begin{bmatrix}
+		A_t & c_t \\ 0 & 1
+	\end{bmatrix} \begin{pmatrix}
+		x_t \\ 1
+	\end{pmatrix} + \begin{bmatrix}
+		B_t \\ 0
+	\end{bmatrix} u_t = \overline A_t \overline x_t + \overline B_t u_t\]
+	while the cost becomes
+	\[ \mathcal J = \sum_{t=0}^{N-1} \begin{pmatrix}
+		\overline x_t^\top & u_t^\top 
+	\end{pmatrix} \begin{bmatrix}
+		\overline Q_t & \overline S_t \\ \overline S_t^\top & R_t
+	\end{bmatrix} \begin{pmatrix}
+		\overline x^\top \\ u_t
+	\end{pmatrix}
+	+ \overline x_N^\top \overline Q_f \overline x_N \]
+	with
+	\[ \overline Q_t = \begin{bmatrix}
+		Q_t & q_t \\ q_t^\top & 0
+	\end{bmatrix} \qquad \overline S_t = \begin{bmatrix}
+		S_t \\ s_t^\top
+	\end{bmatrix} \]
+	
+	The lonely difference with respect to the "standard" LQR case is that now in the cost there's also a mixed cost term $x^\top S u$ (previously not present).
+	
+	\paragraph{Tracking problem} Let's assume that there are two reference trajectories $x^\textrm{ref},u^\textrm{ref}$ for both states and inputs; the inhomogeneous formulation (\ref{eq:LQRinhomogeneous}) of the LQR problem can be also used to optimize the tracking of such references. Considering the cost
+	\[ \mathcal J = \sum_{t=0}^{N-1} \big(x_t - x_t^\textrm{ref}\big)^\top Q_t \big(x_t - x_t^\textrm{ref}\big) + \big(u_t - u_t^\textrm{ref}\big)^\top R_t \big(u_t - u_t^\textrm{ref}\big) \]
+	we can reduce to the inhomogeneous formulation by simply expanding the quadratic terms:
+	\begin{align*}
+		\mathcal J & = \sum_{t=0}^{N-1} x_t^\top Q_t x_t + u^\top R u - 2x^\textrm{ref}_t Q x - 2 {u^\textrm{ref}_t}^\top R u \\
+		& = \sum_{t=0}^{N-1} \begin{pmatrix}
+			x^\top & u^\top & 1
+		\end{pmatrix} \begin{bmatrix}
+			Q & 0 & Qx^\textrm{ref}_t \\ 0 & R & R u^\textrm{ref}_t \\ {x_t^\textrm{ref}}^\top Q & {u_t^\textrm{ref}}^\top R & 0
+		\end{bmatrix} \begin{pmatrix}
+			x \\ u \\ 1
+		\end{pmatrix}
+	\end{align*}
+	
+\section{Differential dynamic programming}
+	\textit{Differential dynamic programming} (\textit{DDP}) can be regarded as an extension of the linear quadratic regulator to non-linear dynamics and cost. Solutions are obtained by linearization of the problem, and for this reason convergence is not ensured, but the underlying step ideas of the algorithms are as follows:
+	\begin{enumerate}
+		\item linearize the cost around the current trajectory;
+		\item solve the LQR problem to get the variation of the controls $u$;
+		\item perform a line-search to ensure convergence.
+	\end{enumerate}
+	
+	Denoting with $U_i$ the set of control inputs $(u_i,\dots, U_{N-1})$, we generally define the value function simply as
+	\[ V(z,i) = \min_{U_i} \mathcal J_i\big(z, U_i\big) \]
+	and exploiting the Bellman's optimality principle it leads to the following recursive definition:
+	\[ V(z,i) = \min_w \underbrace{\Big(\ell_i \big(z, w) + V\big(f(z,w), i+1\big)\big)\Big)}_{Q(z,w)} \]
+	
+	The dependency on $w$ and $z$ of $Q$ is usually non-linear, however given a reference trajectory $(\overline x,\overline u)$ it's possible to perform a linearization up to the second order (in order to get a quadratic cost) exploiting the Taylor series expansion:
+	\begin{equation} \label{eq:DDPlinearized}
+	\begin{aligned}
+		Q\big(\overline x + z, \overline u + w\big) \approx Q\big(\overline x, \overline u\big) & + \begin{bmatrix}
+			Q_x^\top & Q_u^\top
+		\end{bmatrix} \begin{pmatrix}
+			z \\ w
+		\end{pmatrix} + \frac 1 2 \begin{pmatrix}
+			z^\top & w^\top
+		\end{pmatrix} \begin{bmatrix}
+			Q_{xx} & Q_{xu} \\ Q_{xu}^\top & Q_{uu}
+		\end{bmatrix} \begin{pmatrix}
+			z \\ w
+		\end{pmatrix}
+	\end{aligned}
+	\end{equation}
+	where with the subscripts\footnote{notation that will be also used later while defining the value function $V_i, V_{ij}$ and the costs $\ell_{ij}$.} we intend the differentiation operation defined as
+	\[ Q_i = \pdiff Q i \hspace{2cm} Q_{ij} = \pdiff{^2Q}{i \,\partial j} \]
+	with $Q_i$ vector and $Q_{ij}$ a matrix. Further denoting with $V'$ the value function $V(\cdot, i+1)$ evaluated at the next time step, we can explicitly compute the different terms of expansion of $Q$ in terms of the cost $\ell$ and dynamic $f$:
+	\begin{equation} \label{eq:temp:6}
+	\begin{aligned}
+		Q_x & = \ell_x + f_x^\top V_x' \\
+		Q_u & = \ell_u + f_u^\top V_x' \\
+		Q_{xx} & = \ell_{xx} + f_x^\top V_{xx}' f_x + \cancel{V_x' f_{xx}} \\
+		Q_{uu} & = \ell_{uu} + f_u^\top V_{xx}' f_u + \cancel{V_x' f_{uu}} \\
+		Q_{xu} & = \ell_{xu} + f_x^\top V_{xx}' f_u + \cancel{V_x' f_{xu}} 
+	\end{aligned}
+	\end{equation}
+	In this expression some terms are neglected since the evaluation of the derivatives $f_{ij}$ will lead to \textit{tensors} (3D matrices) that are hard to deal with; furthermore it has been observed the contribution of such elements is in practice negligible.
+	
+	The optimal cost of the linearized quadratic expression (\ref{eq:DDPlinearized}) is found as
+	\begin{equation} \label{eq:DDPoptinput}
+		w^\star = \min_w Q(z,w) = - Q_{uu}^{-1} \big(Q_u + Q_{ux} z\big) = \overline w + K z
+	\end{equation}
+	Substituting back this optimal result in \ref{eq:DDPlinearized} provides us
+	\begin{equation}
+	\begin{aligned}
+		V(z, i) & = \overline Q + Q_x^\top z + Q_u w^\star + \frac 1 2 z^\top Q_{xx} z + \frac 1 2 {w^\star}^\top Q_{uu} w^\star + \frac 1 2 z^\top Q_{xu} w^\star = \dots \\
+		& = \Delta V + V_x z + \frac 12 z^\top V_{xx} z
+	\end{aligned}
+	\end{equation}
+	with
+	\begin{equation} \label{eq:DDPcoeff}
+	\begin{aligned}
+		\Delta V & = \overline Q - \frac 1 2 Q_u^\top Q_{uu}^{-1} Q_u \\ 
+		V_x & = Q_x - Q_{xu}Q_{uu}^{-1} Q_u \\
+		V_{xx} & = Q_{xx} - Q_{xu}Q_{uu}^{-1}Q_{ux} \\ 
+		\overline Q & = Q\big(\overline x , \overline u\big) + V'\big(\overline x, \overline u\big) = \overline \ell + \overline V'
+	\end{aligned}
+	\end{equation}
+
+	\paragraph{Regularization} Looking at the terms in (\ref{eq:DDPcoeff}) it can be easily observe that their computation relies on the inversion of the matrix $Q_{uu}$ that, unluckily, can't be guaranteed a-priori. In general to avoid the possibility of having singular matrices that needs to be inverted, we can perform a \textit{regularization} by adding a rescaled identity matrix:
+	\begin{equation}
+		\overline Q_{uu} = Q_{uu} + \mu I
+	\end{equation}
+	with $\mu$ "small". This do not provide any mathematical guarantee that $\overline Q_{uu}$ is actually invertible, but numerically it becomes more likely. Intuitively one can regard such regularization as adding a new term in the linearized cost proportional to the input itself, i.e.
+	\[ \overline \ell \big(\overline x + z, \overline u + w\big) = \ell \big(\overline x + z, \overline u + w\big) + \frac 1 2 \mu \|w\|^2  \]
+	
+	Based on the regularization, terms in (\ref{eq:DDPcoeff}) are reconsidered as
+	\begin{equation} \label{eq:temp:5}
+		\begin{aligned}
+			\Delta V & = \overline Q + Q_u^\top \overline w + \frac 1 2 \overline w^\top Q_{uu
+			} \overline w \\ 
+			V_x & = Q_x^\top + Q_u^\top K + \overline w^\top Q_{uu}K + \overline w^\top Q_{xu}^\top \\
+			V_{xx} & = Q_{xx} + K^\top Q_{uu}K + Q_{xu}K + K^T Q_{xu}^T 
+		\end{aligned}
+	\end{equation}
+	with
+	\begin{equation} \label{eq:temp:7}
+		\overline w = - \overline Q_{uu}^{-1}Q_u \qquad K = - \overline Q_{uu}^{-1} Q_{ux}
+	\end{equation}
+	that are based on the optimal control solution (\ref{eq:DDPoptinput}) exploiting the regularized matrix.
+	
+\subsection{Iterative LQR}
+	One way to solve differential dynamic programming is by means of the \textit{iterative linear quadratic regulator} (\textit{iLQR}) algorithm, summarized as follows:
+	\begin{enumerate}
+		\item given an initial set of control inputs $U$ and the dynamic $f$ of the system, we simulate the sequence fo states $X$;
+		\item we perform a \textit{backward pass}: exploiting the definition of the value function, we start from the end and compute the updated values of the inputs and the corresponding gains;
+		\item wer perform a \textit{forward pass} with a line-search to find the optimal update step.
+	\end{enumerate}
+	Steps 2 and 3 are iterated until convergence. Algorithm \ref{alg:DDP} presents the whole procedure of the iLQR.
+	
+	\input{Algorithms/DDP.tex}
+	
+	\paragraph{Line-search} Once the backward pass is done we have a set of variational inputs $\overline w$ that can be applied to the yet applied inputs $\overline U$; the goal now is to estimate "how much times" ($\alpha$) of such quantity we should add to obtain the best cost reduction.
+	
+	To do so we firstly need to compute the cost given by the value function at time $0$ considering a state variation $x - \overline x = z = 0$ that evaluates to
+	\[ V_0(0) = \Delta V_0 = \]
+	
+	\textbf{TODO: finire di spiegare l'algoritmo e aggiornare lo pseudo-codice per il costo e regolarizzazione dinamica}
+	
+	
+	
+\section{Model predictive control}
+	In \textit{model predictive control} (\textit{MPC}) we use the resulting optimal control for controlling a system/robot inside a control loop. The main idea is to use the current state as initial condition for solving a finite horizon OCP and apply just the first torque computed (not the whole trajectory); at the next time-step the controller will solve the same problem but with a new initial condition.\\
+	Considering an already-discretized OCP problem, MPC deals with the solution of the following problem at each time-step:
+	\begin{equation}
+	\begin{aligned}
+		X^\star,U^\star =  \arg \min_{X,U} \quad & \sum_{k=0}^{N-1} \ell \big(x_k, u_k\big) \\
+		\textrm{sub. to:}\quad & x_{k+1} = f\big(x_k, u_k, k\big) && k = 0,\dots, N-1 \\
+		&x_{k+1} \in \mathcal X, u_k \in \mathcal U && k = 0,\dots, N-1 \\
+		& x_0 = x^\textrm{meas}
+	\end{aligned}
+	\end{equation}
+	At each time-step the applied control is simply $\tau = u_0^\star$, while the rest of both $U^\star, X^\star$ is unused (numerically to improve convergence speed, we might use the yest computed $U^\star$ as initial guess for the next OCP).
+	
+	\paragraph{Challenges in model predictive control} This control technique seems promising as it solves at each iteration the optimal control possible, however we have to tackle few challenges that are not that irrelevant, in particular
+	\begin{enumerate}[\itshape i)]
+		\item \textit{feasibility} deals with the fact that OCPs might be not always feasible, so that we might reach states where not all constraints can be satisfied. To avoid this issue we have to ensure \textit{recursive feasibility};
+		\item \textit{stability} deals with the stabilization of the system itself. In fact at each iteration the OCP looks on a different and "increased" time-horizon after which the problem is solved. It might happen in fact that in order to "stabilize in the future", the system tends to initially diverge from the desired configuration: if this process is iterated we might go toward a system instability (and not stability);
+		\item \textit{computation time}: solving OCP problem requires time, and if we think to re-compute everything at each iteration we need to do it fast.
+	\end{enumerate}
+	
+\subsection{Feasibility}
+	\paragraph{Infinite horizon MPC} Let's consider a case where at each iteration the time horizon is set to infinite ($N=\infty$): this means that each time the OCP sees always the "same amount of time". Assuming that there are no disturbances, predicted and actual trajectories computed each time are the same, since they follow from the Bellman's optimality principle.
+	
+	If we now consider a cost $\ell(x,u) \geq \alpha \|x\|$ for any combination $x,u$ with $\alpha > 0$, then having a finite cost implies that the system is stable (since eventually $x$ will set to zero, thus no cost is added).\\
+	Moreover, since predicted and actual trajectories are equal, it turns out that we have \textit{recursive feasibility} along a closed-loop trajectory.
+	
+	The main idea now is to add a terminal cost and a constraint to a finite horizon OCP in order to "mimic" an infinite horizon problem, reminiscing the concept of the value function.
+	
+	\paragraph{Terminal cost and constraint} With the idea just said, the problem that we want to solve in order to improve feasibility becomes
+	\begin{equation}
+		\begin{aligned}
+			V_N^\star(x_0)=  \arg \min_{X,U} \quad & \sum_{k=0}^{N-1} \ell \big(x_k, u_k\big) + \ell_f\big(x_N \big)\\
+			\textrm{sub. to:}\quad & x_{k+1} = f\big(x_k, u_k, k\big) && k = 0,\dots, N-1 \\
+			&x_{k+1} \in \mathcal X, u_k \in \mathcal U && k = 0,\dots, N-1 \\
+			& x_0 = x^\textrm{meas} \\
+			& x_N \in \mathcal X_f && {\footnotesize \text{terminal constraint}}
+		\end{aligned}
+	\end{equation}
+	The main objective now is concerning the generation of both $\ell_f(\cdot)$ and $\mathcal X_f$.
+	
+	\paragraph{Feasibility} If an OCP is subjected to only input constraints, then it happens that it's always feasible; on the other hand, if the problem is subjected to hard state constraint, if $N < \infty$ there's no guarantee that the OCP remains feasible, even while staying in the nominal case.
+	
+	The \textit{maximum output admissible theory} tells us that in general a limited amount of horizon time-steps $N < \infty$ is enough to guarantee the problem feasibility; in particular it's necessary to use a \textit{maximal control invariant set} as a terminal constraint to ensure that the closed-loop convergence. Such theory is based on the following theorem:
+	\begin{quote}
+		If $\mathcal X_f$ is a control invariant set, then the model predictive control \\ problem is recursively feasible.
+	\end{quote} 
+	In particular
+	\begin{quote}
+		a set $\mathcal S$ is control invariant if $\forall x \in \mathcal S$ there exists an input $u\in \mathcal U$ \\ such that $f(x, u) \in \mathcal S$.
+	\end{quote}
+	i.e. when we start in the set $\mathcal S$ it's always possible to stay there.
+	
+	In practice computing control invariant sets is generally hard, specially for non-linear systems. For linear system with dynamic $x^+ = A x$ and output $y = Cx$ with $y \in \mathcal Y = \big\{ y \in \mathds R^p \ : \ h_i(y) \leq 0, i =1,\dots, s \big\}$ then the maximal output admissible set is found as
+	\[ \mathcal O_\infty = \big\{ x \in \mathds R^n \ : \ h_i\big(CA^+ x\big) \leq 0, i = 1,\dots, s, t = 0,\dots, \infty \big\} \]
+	
+	\textbf{TODO: finire questa parte}
+	
+\subsection{Stability}
+	In order to address the stability issue of MPC, we have to firstly define what's a positive invariant set and an exponential Lyapunov function.
+	\begin{quote}
+		A set $\mathcal S$ is positive invariant set if $\forall x \in \mathcal S$ it holds that $f(x) \in \mathcal S$
+	\end{quote}
+	\begin{quote}
+		Suppose that $\mathcal X$ is a positive invariant set, a function $V:\ \mathds R^n \rightarrow \mathds R^+$ is an exponential Lyapunov function if $\exists \alpha_1,\alpha_2,\alpha_3 > 0$ such that
+		\begin{align*}
+			V(x) & \geq \alpha_1 \|x\| \\
+			V(x) & \leq \alpha_2 \|x\| \\
+			V\big(f(x)\big) - V(x) & \leq - \alpha_3 \|x\|
+		\end{align*}
+		for all $x \in \mathcal X$.
+	\end{quote}
+	With this premise
+	\begin{quote}
+		If there exists a Lyapunov function in the set $\mathcal X$, then the origin is exponentially stable in $\mathcal X$; furthermore, if $\mathcal X = \mathds R^n$ the origin is globally exponentially stable.
+	\end{quote}
+	
+	Since the value function $V(\cdot)$ represents the cost-to-go that we expect to decrease over time, then we can regard it as a Lyapunov function. Given the optimal value function $V_0^\star(x_0)$ and the value function(not necessarily optimal) at the sequent time-step $V_1(x_1)$ as
+	\[ V_0^\star(x_0) = \sum_{i=0}^{N-1} \ell(x_i, u_i) + \ell_f (x_N) \qquad V_1(x_1) = \sum_{i=1}^N \ell(x_i, u_i) + \ell_f(x_{N+1})  \]
+	then their difference evaluates to
+	\[ V_1(x_1) - V_0^\star(x_0) = \ell(x_N,u_N) + \ell_f(x_{N+1}) - \ell_f(x_N) - \ell(x_0, u_0) \leq -\alpha_3 \|x_0\| \qquad \forall x_N \in \mathcal X_f \]
+	To have $V(\cdot)$ as a Lyapunov function we need to assume that
+	\begin{itemize}
+		\item $f(0,0) = 0$, $\ell(0, 0) = 0$, $\ell_f(0) = 0$;
+		\item $\mathcal Z$ is closed and $\mathcal X_f$ is compact (i.e. closed and bounded);
+		\item for any state $x \in \mathcal X_f$ exists a control $u \in \mathcal U$ such that
+		\[ f(x,u) \in \mathcal X_f \]
+		so $\mathcal X_f$ is a control invariant set, and that the terminal cost decreases, i.e.
+		\[ \ell_f\big(f(x,u)\big) - \ell_f(x) \leq -\ell(x,u) \]
+		
+		Furthermore must exists two constants $\alpha_1,\alpha_f > 0$ that allows to lower bound the running cost and upper bound the terminal cost, i.e. 
+		\begin{align*}
+			\ell(x,u) & \geq \alpha_1 \|x\| && \forall x \in \mathcal X_N, \ \forall u \in \mathcal U \\
+			\ell_f(x) & \leq \alpha_f \|x\| && \forall x \in \mathcal X_f
+		\end{align*}
+		where $\mathcal X_N$ is the set of states which the OCP has a solution.
+	\end{itemize}
+	If all this axioms are satisfied, then $V_N^\star(\cdot)$ is a Lyapunov function.
+	
+	\textbf{TODO: aggiungere considerazioni finali con sistema lineare}
+	
+
+\subsection{Computation time}
+	To improve the convergence time of the numerical algorithms to solve OCPs, we can use a \textit{warm start} that exploits the previous solution of the same problem as initial guess for the current OCP. This is done by shifting back by 1 time-step the optimal trajectory, i.e. $u_k^\textrm{guess} = u_{k+1}^\star$; the last element is instead initialized to zero ($u_{N-1}^\textrm{guess} = 0$). To bound also the computation time, we don't iterate until a full convergence, but we just do a fixed amount of Newton iteration (1 is usually fine).
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

@@ -1,0 +1,15 @@
+\begin{algorithm}[tb]
+	\caption{pseudo-code for solving the linear quadratic regulator problem.}\label{alg:LQR}
+	\begin{algorithmic}
+		\State initialize $P_N = Q_f$
+		\State
+		\For{$t$ from $N$ to $1$} \Comment{backward pass}
+			\State $P_{t-1} = Q + A^\top P_t A - A^\top P_t B\big(RB^\top P_tB\big)^{-1} B^\top P_t A$
+		\EndFor
+		\State
+		\For{$t$ from $0$ to $N-1$} \Comment{forward pass}
+			\State $K_t = -\big(R + B^\top P_{t+1}B\big)^{-1}B^\top P_{t+1}A$
+			\State $u_t^\star = K_t x_t$ \Comment{at runtime}
+		\EndFor
+	\end{algorithmic}
+\end{algorithm}

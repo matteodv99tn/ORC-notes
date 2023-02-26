@@ -1,0 +1,10 @@
+\begin{table}[bt]
+	\centering 
+	\caption{control learning categories based on the quantities that should be learned and the knowledge on the respective Markov decision process.} \label{tab:RLquantity}
+	\begin{tabular}{M{3cm} | M{4.5cm} M{4.5cm}}
+		\multirow{2}{3cm}{\centering \textbf{Markov decision process}} & \multicolumn{2}{c}{\textbf{learned quantities}} \\
+		& $V(x)/Q(x,u)$ & $V(x)/Q(x,u)$ and $\pi(x)$ \\ \hline \hline \\ [-1.8ex]
+		\textbf{known} & value iteration & policy iteration \\
+		\textbf{unknown} & direct methods & actor-critic methods
+	\end{tabular}
+\end{table}

@@ -1,0 +1,425 @@
+\chapter{Reinforcement Learning}
+	\textit{Reinforcement learning} (\textit{RL}) is a method originally developed within the data-science community that, in the last years, has also been extended to robotic and control applications. It has a lot of similarities with optimal control, however key differences are that:
+	\begin{itemize}
+		\item reinforcement learning tries to find the \textit{global optimal policy} for arbitrarily complex problems;
+		\item assumes that the system's \textit{dynamic} is \textit{unknown} and assumed to be \textit{stochastic}\footnote{in this chapter we will mainly consider deterministic dynamic as subset of the more general formulation.};
+		\item initially it was developed to solve problem with discrete sets for both states and control, however in the recent days it has also been extended to continuous-time systems\footnote{in genera the discretization of the continuous-time dynamics scales badly with the growth of the problem size};
+		\item typically solves an infinite horizon problem.
+	\end{itemize}
+
+	\paragraph{Terminology} Even if concepts are very similar, reinforcement learning uses slightly different terminology and notation, as can be seen in table \ref{tab:RLterms}. The main difference is in the attitude toward the problem: in optimal control we want to minimize a cost, while in reinforcement learning we want to maximize the reward.
+	
+	\input{Tables/RLterminology.tex}
+	
+	For sake of simplicity, in this chapter we will mainly stick with the optimal control notation and consider the problem as a minimization (not a maximization of the reward); only exception is the subtle difference between \textit{value function} and \textit{optimal value function} that will be taken from the reinforcement learning vocabulary.
+	
+\section{Markov decision process}
+	A \textit{Markov decision process} (\textit{MDP}) is used to describe the environment of a reinforcement learning problem; a MDP is characterized by being fully observable and satisfying the \textit{Markov property} for which "the future is independent from the past, given the present", mathematically speaking
+	\begin{equation}
+		\prob{x_{t+1}|x_t} = \prob{x_{t+1}|x_t, x_{t-1}, \dots, x_1}
+	\end{equation}
+	where $\prob{X|Y}$ is the \textit{conditional probability} of $X$ happening given that $Y$ has already happened. The probability of switching from one state to another is described by the \textit{state transition matrix} $\stm_{xx'} = \prob{x_{t+1} = x' | x_t}$ defined as
+	\begin{equation}
+		\stm_{xx'} = \begin{bmatrix}
+			P_{11} & \dots & P_{1n} \\ 
+			\vdots & \ddots \\
+			P_{n1} & & P_{nn}
+		\end{bmatrix} \qquad P_{ij} \in [0,1]
+	\end{equation}
+	Each state transition matrix, to be valid, must have that the sum of all the elements of each row adds up to 1 (since each state must evolve surely at each time-step). Furthermore in case of deterministic dynamic each element is either $0$ (transition not possible) or $1$ (only transition admissible).
+	
+\subsection*{Markov process}
+	A \textit{Markov process} (\textit{MP}) is described by the tuple
+	\begin{equation}
+		\langle \X, \stm \rangle
+	\end{equation}
+	where $\X$ is the (finite) set of the allowed states and $\stm$ is the state transition matrix ruling the probability of going from one state to the other; usually a Markov process is also referred as a \textit{Markov chain}.
+	
+	\paragraph{Properties of the state transition matrix} Since $\stm$ has all non-negative entries and is irreducible (because it's associated to a fully connected graph), by the \textit{Person-Frobenius theorem} it holds that
+	\begin{itemize}
+		\item the largest (in norm) eigenvalue $r$ of $\stm$ must satisfy
+		\[ \min_i \sum_j P_{ij} \leq r \leq \max_i \sum_j P_{ij} \]
+		Since each row sums up exactly to 1, then it follows that the maximum eigenvalue of $\stm$ is $r=1$;
+		\item all other eigenvalue $\lambda$ of $\stm$ are smaller then $r$, i.e.
+		\[ \lambda_i\{\stm\} < 1 \qquad i = 2,3,\dots\]
+	\end{itemize}
+	A Markov chains sets up a probabilistic framework to describe a system's dynamic, considering $x^+ = \prob{x^+|x}$; optimal control instead relies on the deterministic approach $x^+ = f(x,u)$ that we will try to stick with.
+
+\subsection*{Markov reward process}
+	A \textit{Markov reward process} (\textit{MRP}) is described by a tuple
+	\begin{equation} \label{eq:MRP}
+		\langle \X, \stm, C, \gamma \rangle
+	\end{equation}
+	where $C$ is the \textit{cost function} and $\gamma \in (0,1)$ is the \textit{discount factor}. The first estimates the expected cost at the next time-step given the current state, i.e.
+	\[ c_x = \exp{\ell_{t+1} | x = x_t} \]
+	while the discount factor, as name suggests, is a measure of "how relevant a future cost is with respect to the present". The cost-to-go (\textit{return} in RL jargon) is in fact the \textit{total discounted cost} from $t$ to infinity, i.e.
+	\begin{equation} \label{eq:MRPcost}
+		\mathcal J_t = \ell_t + \gamma \ell_{t+1} + \gamma^2 \ell_{t+2} + \dots = \sum_{k=0}^{\infty} \gamma^k \ell_{t+k}
+	\end{equation}
+	
+	Here it's clear that the discount factor can be chosen to favor a reduction of the cost "in short time" ($\gamma \rightarrow 0$: myopic evaluation) or in the "long run" ($\gamma \rightarrow 1$: far-sighted evaluation).
+	
+	\paragraph{Value function} In reinforcement learning the value function $V(\cdot)$ represents the cost that we pay starting from a given state $x$, i.e. 
+	\[ V(x) = \mathcal J_t\big(x=x_t\big) \]
+	In light of the Bellman's optimality principle and (\ref{eq:MRPcost}) it turns out that
+	\begin{equation}
+		V(x) = \ell(x) + \gamma \, V\big(f(x)\big)
+	\end{equation}
+	
+	Considering in general the elements (\ref{eq:MRP}) of the Markovian reward process, then it directly follows
+	\begin{align*}
+		V & = C + \gamma \stm V \\ 
+		\begin{pmatrix}
+			V(1) \\ \vdots \\ V(n)
+		\end{pmatrix} & = \begin{pmatrix}
+			\ell(1) \\ \vdots \\ \ell(n)
+		\end{pmatrix} + \gamma \begin{bmatrix}
+			P_{11} & \dots & P_{1n} \\ 
+			\vdots & \ddots \\
+			P_{n1} & & P_{nn}
+		\end{bmatrix} \begin{pmatrix}
+			V(1) \\ \vdots \\ V(n)
+		\end{pmatrix}
+	\end{align*}
+	It turns out that this is a linear equation in the unknown $V$, so by simply reversing the terms
+	\begin{equation}
+		V = (I-\gamma \stm)^{-1} C
+	\end{equation}
+	This formulation is simple, but is applicable only to Markov chains of small size; when the number of states become larger, the numerical inversion of $I-\gamma \stm$ becomes numerically ill conditioned, thus iterative methods to evaluate $V$ are preferred.
+	
+\subsection*{Markov decision process}
+	A \textit{Markov decision process} (\textit{MDP}) is described by the tuple
+	\begin{equation}
+		\langle \X, \U , \stm, C, \gamma \rangle
+	\end{equation}
+	where $\U$ is the (finite) set of control inputs. Denoting
+	\[ P_{xx'}^u = \prob{x' = x_{t+1} | x = x_t, u = u_t } \hspace{2cm} C_x^u = \ell_t \big(x = x_t, u = u_t\big) \]
+	we define the \textit{policy} $\pi$ the probability distribution of the control inputs $u$ given the states $x$, i.e.
+	\begin{equation}
+		\pi\{u|x\} = \prob{u = u_t | x = x_t}
+	\end{equation}
+	In case of deterministic policies the policy reduces simply to a function $u = \pi\{x\}$.
+	
+	\paragraph{Action-value function} We denote with $Q^\pi(x,u)$ the \textit{action-value function} that's representing the cost that we pay starting from a state $x$ and applying inputs $u$ based on the control policy $\pi$:
+	\begin{equation}
+		Q^\pi(x,u) = \mathcal J_t\big(x = x_t, u = u_t, u_{k>t} \simeq \pi \big)
+	\end{equation}
+	and considering the Bellman's theorem
+	\begin{align*}
+		Q^\pi(x,u) & = \ell(x,u) + \gamma Q^\pi\Big(f(x,u), \pi \big\{ f(x,u) \big\}\Big) \\
+		& = \ell(x,u) + \gamma V^\pi\big(f(x,u)\big) \tag{$\dagger$}
+	\end{align*}
+	where to simplify the notation we write $Q^\pi(x, \pi\{x\})$ simply as $V^\pi(x)$
+	
+	\paragraph{Optimal value function and policy} The \textit{optimal value function} is the one associated with a policy the minimize it's value, i.e.
+	\begin{equation}
+		V^\star (x) = \min_\pi V^\pi(x)
+	\end{equation}
+	thus the \textit{optimal action-value function} is
+	\begin{equation}
+		Q^\star(x,u) = \min_\pi Q^\pi(x,u) 
+	\end{equation} 
+	
+	The optimal policy $\pi^\star$ is the one that satisfies $\pi^\star \leq \pi$ for any other policy $\pi$, where $\pi\leq \pi'$ requires that $V^\pi(x) \leq V^{\pi'}(x)$ for any $x$. This is achieved by minimizing the optimal action-value function among all possible inputs, i.e. 
+	\begin{equation}
+		\pi^\star (x) = \arg \min_{u\in \U} Q^\star(x,u)
+	\end{equation}
+	
+	The main idea is that if we have access to the optimal action-value function, then it's possible to generate the optimal control policy.
+	
+	\paragraph{Bellman optimality equality} Given that the optimal value function is
+	\[ V^\star (x) = \min_u Q^\star(x,u) \]
+	and recalling ($\dagger$) allows us to state the following condition that the optimal solution must obey to:
+	\begin{equation}
+	\begin{cases}
+		V^\star(x) & = \min_u \ell(x,u) + \gamma V^\star \big(f(x,u)\big) \\
+		Q^\star(x,u) & = \ell(x,u) + \gamma \min_{u'} Q^\star\big(f(x,u), u'\big)
+	\end{cases}
+	\end{equation}
+
+	Even in this case of deterministic system, there's no close-form solution for the non-linear minimization so iterative algorithms are necessary.
+	
+\section{Dynamic programming}
+	\textit{Dynamic programming} (\textit{DP}) is a set of methods that are relying on the full knowledge of the Markovian decision process in order to solve two kinds of problems:
+	\begin{itemize}
+		\item \textit{prediction}, so given $\langle \X,\U,\stm, C,\gamma\rangle$ and a policy $\pi$, it computes the value function $V^\pi$ associated to such policy;
+		\item \textit{control}, so given the MDP it outputs both the optimal policy $\pi^\star$ as well as the related optimal value function $V^\star$.
+	\end{itemize}
+	The latter is of course more interesting in control application as it provides us the best way to act on a system given the cost it's subjected to.
+	
+	\paragraph{Finite and infinite horizon} Dynamic programming was already introduced in sec. \ref{sec:dynamicprogramming}, page \pageref{sec:dynamicprogramming}, in order to find the global optimum of a discretized optimal control problem; in that context we dealt with finite horizon problems for which theory is simpler and algorithms can compute solutions in a finite time.
+	
+	For what concerns reinforcement learning we usually deal with \textit{infinite horizon} problem for which theory is more complex (but elegant), assuming that both policy and value functions are time independent. Such theory is also a good approximation of problems with "long" (but finite) time horizons.
+	
+	\paragraph{Bellman's operators} Before continuing with dynamic programming, let's first define the \textit{Bellman (expectation backup) operator}
+	\begin{equation} \label{eq:bellmanoperator}
+		T^\pi(V) = C^\pi + \gamma \stm^\pi V
+	\end{equation}
+	and the \textit{Bellman optimality backup operator}
+	\begin{equation}
+		T(V) = \min_{u\in \U} C^\pi + \gamma \stm^\pi V \quad \Leftrightarrow \quad  (TV)(x) = \min_{u\in \U} \ell(x,u) + \gamma V\big(f(x,u)\big)
+	\end{equation}
+	 
+\subsection{Prediction: iterative policy evaluation} \label{sec:policyeval}
+	Let's consider a prediction problem where it's requested to evaluate the value function $V$ given the policy $\pi$. The solution to such problem is performed by iteratively applying the Bellman expectation operator:
+	\begin{equation}
+		V_{k+1} = T^\pi (V_k)
+	\end{equation}
+	where $k$ is the iteration index; expanded the value function is iteratively updated as
+	\[ V_{k+1}(x) = \ell\big(x,\pi\{x\}\big) + \gamma V_x\big(f(x,\pi\{x\})\big) \qquad \forall x \in \X\]
+	
+	So in practice we can chose an arbitrary initial value function $V_0$ since the \textit{iterative policy evaluation} algorithm is guarantee to asymptotically converge, i.e.
+	\[ \lim_{k\rightarrow \infty} V_k = V^\pi \]
+	
+	\paragraph{Proof of convergence} In order to prove the convergence of the iterative policy evaluation we firstly need to show that $T^\pi$ is  contracting. Given two value function $V,Z$ we see that
+	\[ \big\|T^\pi(V) - T^\pi(Z) \big\|_\infty = \big\|C^\pi + \gamma \stm^\pi V - C^\pi - \gamma \stm^\pi Z \big\|_\infty = \gamma \big\| \stm^\pi(V-Z) \big\|_\infty \]
+	Due to the Person-Frobenius theorem it follows that
+	\[ \gamma \big\| \stm^\pi(V-Z) \big\|_\infty \leq \gamma \|V-Z\|_\infty \qquad \Rightarrow \qquad \big\|T^\pi(V) - T^\pi(Z) \big\|_\infty \leq \gamma \|V - Z\|_\infty \]
+	so given any two value function, the relative step obtained by applying the Bellman's expectation operator is upper bounded by the norm difference $V-Z$.
+	
+	We can now show that given $V_0$ and $V_\pi$,  then $V_k \rightarrow V_\pi$ for $k \rightarrow \infty$. Considering
+	\[ \big\| V_k - V_\pi \big\|_\infty = \big\| T^\pi(V_{k-1}) - T^\pi(V_\pi)\big\|_\infty \leq \gamma \big\| V_{k-1} - V_\pi \big\|_\infty \leq \gamma^2 \big\| V_{k-2} - V_\pi \big\|_\infty \]
+	so generalizing
+	\[ \big\| V_k - V_\pi \big\|_\infty \leq \gamma^k \big\|V_0 - V_\pi\big\|_\infty \] 
+	Since $\gamma \in (0,1)$, then $V_k$ converges to $V_\pi$ at a geometric rate.
+	
+	Lastly we show that $V_\pi$ is a unique fixed point for the operator $T^\pi$; assuming that $V$ and $Z$ are both fixed point for $T^\pi$, i.e. $T^\pi(V) = V$ and $T^\pi(Z) = Z$, then we can show that $V$ must equate $Z$. Because $T^\pi$ is contracting, then
+	\[ \big\|T^\pi(V) - T^\pi(Z) \big\|_\infty \leq \gamma \|V- Z\|_\infty \]
+	but since $V,Z$ are fixed points
+	\[ \big\|T^\pi(V) - T^\pi(Z) \big\|_\infty = \|V- Z\|_\infty \]
+	This condition must hold at the same time, so
+	\[ \gamma \|V- Z\|_\infty \geq \|V- Z\|_\infty \]
+	bug since $\gamma < 1$, then it must have $\|V-Z\|_\infty = 0$, implying that $V=Z$.
+	
+\subsection{Control: policy and value iteration} \label{sec:policyiteration}
+	\paragraph{Policy iteration} In this case we deal with a more complex problem where, given a Markovian decision process, we want to find the optimal policy $\pi^\star$. The idea is that we start from an arbitrary policy $\pi_0$ and we perform until convergence the following two steps:
+	\begin{enumerate}
+		\item we evaluate the policy $\pi_k$, so we compute the value function $V^{\pi_k}$;
+		\item we improve the policy by acting greedily with respect to the value function $V^{\pi_k}$, so
+		\begin{equation}
+			\pi_{k+1}(x) = \arg\min_{u\in \U} \ell(x,u) + \gamma V^{\pi_k}\big(f(x,u)\big)
+		\end{equation}
+	\end{enumerate}
+	Such algorithm always converges to the optimum policy:
+	\[ \lim_{k\rightarrow \infty} \pi_k = \pi^\star \]
+	
+	\paragraph{Proof of convergence} Let's consider the simplified mathematical notation $\pi' \leq \pi$ to represent $V^{\pi'} \leq V^{\pi}$, we want to show now that $\pi_{k+1} \leq \pi_k$ for any iteration $k$, implying that we are always going closer to the optimal solution. Calling $\pi = \pi_k$ and $\pi' = \pi_{k+1}$ we see that 
+	\begin{align*}
+		\pi'(x) & = \arg\min_u \Big(\ell(x,u) + \gamma V^\pi\big(f(x,u)\big)\Big) \\
+		& = \underbrace{\min_u \Big(\ell(x,u) + \gamma V^\pi\big(f(x,u)\big)\Big) }_{i)} \leq \underbrace{\ell\big(x, \pi(x)\big) + \gamma V^\pi \Big(f\big(x, \pi(x)\big)\Big)}_{ii)}
+	\end{align*}
+	where $i)$ is the cost that we get by following $\pi'$ for the first step and then following $\pi$, while $ii)$ is the one obtained by simply following $\pi$. Considering now that
+	\[ Q^\pi(x,\pi') = \min_u Q^\pi(x,u) \leq Q^\pi\big(x, \pi(x)\big) = V^\pi(x) \]
+	since by acting greedily always leads to a cost improvement (or at worst the cost remains equal), then we can see that
+	\begin{align*}
+		V^\pi(x) & \geq \min_u \ell(x,u) + \gamma V^\pi\big(f(x,u)\big) = \ell(x, \pi') + \gamma V^\pi \big(f(x,\pi')\big) \\
+		&\geq \ell(x,\pi') + \gamma Q^\pi(x',\pi') = \ell(x,\pi') + \gamma \ell(x',\pi') + \gamma^2 V^\pi(x'') \\
+		&\geq \ell(x,\pi') + \gamma \ell(x',\pi') + \gamma^2 Q^\pi(x'',\pi') \\
+		& \geq \sum_{i=0}^\infty \gamma^i \ell\big(x^{(i)}, \pi'\big) = V^{\pi'}(x) \\
+		& \geq V^{\pi '}(x)
+	\end{align*} 
+	thus showing that $\pi' \leq \pi$, so at each iteration we can't have a policy worsening.
+	
+	\paragraph{Modified policy iteration} The main issue in policy iteration is that evaluating exactly the policy can take many iterations, so the idea is just to compute an approximation of $V^{\pi_k}$ using just $m_k$ policy evaluation iterations. Under mild assumptions this eventually converges to $V^{\pi_k}$.
+	
+	With this idea taking $m_k = \infty$ leads to the yet described policy iteration method, while with $m_k = 1$ we get \textit{value iteration}; in the latter case every-time we update $V$ we use a policy that's greedy with respect to the value function itself.
+	
+	\paragraph{Value iteration} The algorithm of \textit{value iteration} simply arts with an arbitrary guess $V_0$ for the value function and at each iteration 
+	\[ V_{k+1}(x) = \min_{u\in\U} \ell(x,u) + \gamma V_k\big(f(x,u)\big) \qquad \forall x \in \X \qquad \Rightarrow V_{k+1} = T(V_k) \]
+	
+	The value function eventually converges to the optimal value
+	\[ \lim_{k\rightarrow \infty} V_k = V^\star \]
+	and the optimal policy $\pi^\star$ is computed at the end from $V^\star$ as
+	\[ \pi^\star = \arg\min_{u\in\U} \ell + \gamma V^\star \]
+	
+	\textbf{TODO: proof}
+	
+	
+\section{Model-free prediction}
+	\textit{Model-free prediction} deals with the problem of finding the value function $V(\cdot)$ of an unknown Markovian decision process by simply acting on the environment and observing the response. 
+	
+\subsection{Monte Carlo policy evaluation} \label{sec:montecarlo}
+	\textit{Monte Carlo} (\textit{MC}) methods can be used to solve model-free prediction problem and it's based on the simple idea of having the value function that's the mean return. This method come with the caveat that can be applied only to \textit{episodic} Markov decision processes, so each episode must have an end.
+	
+	The goal of this method is to learn $V^\pi$ from episodes of experience under a policy $\pi$, so once it has been collected
+	\[ x_1, u_1, \ell_1, x_2, u_2, \ell_2,\dots, x_k \backsim \pi \]
+	Once experience has been collected we can use the equation of the total discounted cost to compute the overall cost-to-go as
+	\[ \mathcal J_t = \ell_t + \gamma \ell_{t+1} + \dots + \gamma^{T-1} \ell_{T-1} \]
+	The value function then is the expected cost-to-go under a policy $\pi$; this can be modeled including also the stochastic part (due to the policy, the MDP and the cost) considering
+	\begin{equation}
+		V^\pi(x) = \mathbb E_\pi \big\{ \mathcal J_t | x_t = x\big\}
+	\end{equation}
+
+	Monte Carlo policy evaluation estimates $V^\pi$ as the average cost-to-go; for what concerns the algorithm the first time a state is visited in an episode we should:
+	\begin{itemize}
+		\item increment a counter $N(x) = N(x) + 1$;
+		\item increment the total cost of such state $C(x) = C(x) + \mathcal J(x)$;
+		\item estimate the value function as $V(x) = V(x) / N(x)$.
+	\end{itemize}
+
+	By law of large number the estimate $V(x)$ tends to $V^\pi(x)$ as $N(x) \rightarrow \infty$. The idea is that by getting experience from more and more episodes, the stochastic contribution on the value function estimation gets negligible.
+	
+	It also exists an \textit{every-visit Monte Carlo} variant for which counter and costs are incremented every-time a state is visited (even inside the same episode).
+	
+	\paragraph{Incremental Monte Carlo update} To avoid storing the total cost $C(x)$ as well as the value function estimate $V(x)$ that are highly correlated, we can compute the mean incrementally, in fact
+	\begin{align*}
+		V_N & = \frac 1N \sum_{i=0}^N \mathcal J_i = \frac{\mathcal J_N + \sum_{i=0}^{N-1} \mathcal J_i}{N} = \frac{\mathcal J_N + (N-1) V_{N-1}}{N} \\
+		& = V_{N-1} + \frac{\mathcal J_N - V_{N-1}}{N}
+	\end{align*}	
+	
+	This definition can be easily extended for \textit{non-stationary} problems in order to consider a running mean that allow to embed a \textit{forget factor} $\alpha$ to discount information from older episodes:
+	\begin{equation} \label{eq:MCincremental}
+		V(x) = V(x) + \alpha\big(\mathcal J - V(x)\big)
+	\end{equation}
+	
+\subsection{Temporal difference learning} \label{sec:td}
+	\textit{Temporal difference learning} (\textit{TD0}) is an alternative to Monte Carlo evaluation for model-free prediction and is based on the cost-to-go estimation based on 1 step look-ahead to update the value function:
+	\begin{equation}
+		V(x_t) = V(x_t) + \alpha_t \big(\underbrace{ \overbrace{\ell_t + \gamma V(x_{t+1})}^\textrm{TD target} - V(x_t) }_\textrm{TD error}\big)
+	\end{equation}
+	where the TD target is the estimated return; here we can find an high similarity with the Monte Carlo incremental update (\ref{eq:MCincremental}). Moreover choosing $\alpha_t = 1$ and sampling all state uniformly, then TD0 is exactly the policy evaluation algorithm presented in sec. \ref{sec:policyeval}, page \pageref{sec:policyeval}.
+	
+	\paragraph{Properties} The TD0 algorithm is a stochastic approximation algorithm; since the Bellman operator \ref{eq:bellmanoperator} has a unique fixed point, then if TD0 converges and all states are sampled infinitely many times than the estimate must converge to $V^\pi$.
+	
+	Converges is guaranteed is the step-size sequence $\alpha_t$ satisfies the \textit{Robinson-Monroe condition} for which
+	\[ \sum_{t=0}^\infty \alpha_t = \infty \qquad \textrm{and} \qquad \sum_{t=0}^{\infty} \alpha_t^2 < \infty \]
+	A plausible sequence that satisfies this condition is $\alpha_t = \overline \alpha / t$, however in practice people use constant step size since the algorithm works anyway.
+	
+	\paragraph{Comparison with Monte Carlo} \input{Tables/MC-TDcomparison.tex}
+	Table \ref{tab:MCTDcomparison} mainly compares Monte Carlo and temporal difference methods, showing the pros and the cons of each one.
+	
+	In general Monte Carlo has an high variance but a zero bias; it's characterized by good convergence properties (even with function approximators) and is not very sensitive to the initialization of the problem. It's also simple and intuitive to understand. 
+	
+	Temporal difference instead has a lower variance but embeds some bias; it's usually more efficient then Monte Carlo and TD0 converges to $V^\pi(x)$ (but not always with function approximators); furthermore is more sensitive to the initialization of the estimate.
+	
+	\paragraph{n-step return} The concept of temporal difference can also be extended to a $n$-step return; TD0 in fact can be regarded as a 1-step return, but we can have a general formulation
+	\begin{align*}
+		n  = 2 &  \qquad \mathcal J_t^{(2)} = \ell_t + \gamma \ell_{t+1} + \gamma^2 V\big(x_{t+2}\big) \\ 
+		n & \qquad \mathcal J_t^{(n)} = \ell_t + \gamma \ell_{t+1} + \dots + \gamma^{n-1} \ell_{t+n-1} + \gamma^n V(x_{t+n})
+	\end{align*}
+	
+	Note that by choosing $n = \infty$, the evaluation describes the Monte Carlo method. In general a TD$(n-1)$ method is updated with the following function:
+	\[ V(x_t) = V(x_t) + \alpha_t\big(\mathcal J_t^{(n)} - V(x_t)\big) \tag{$\circ$} \]
+	
+	\paragraph{Forward view TD$\lambda$} The $\lambda$-cost-to-go $\mathcal J_t^\lambda$ combines all $n$-step cost-to-go $\mathcal J_t^{(n)}$ using as weights the sequence $(1-\lambda)\lambda^{n-1}$, i.e.
+	\begin{equation}
+		\mathcal J_t^\lambda = \big(1-\lambda\big) \sum_{n=1}^\infty \lambda^{n-1} \mathcal J_t^{(n)}		
+	\end{equation}
+	As for Monte-Carlo, such temporal difference can be computed only from complete episodes (since the time horizon $n$ theoretically should go to infinity), for this reason the method is referred as \textit{forward view TD$\lambda$}; once $\mathcal J_t^\lambda$ is computed, we can use ($\circ$) to update the value function.
+	
+	\paragraph{Backward view TD$\lambda$} The \textit{backward view TD$\lambda$} allows an online update of the value function at every step starting  from incomplete sequences. Defining the \textit{eligibility traces} $e_t(\cdot)$ as
+	\begin{equation}
+	\begin{aligned}
+		e_0(x) & = 0 \\ 
+		e_t(x) & = \gamma \lambda e_{t-1}(x) + \mathbb 1(x_t = x) \qquad \gamma < 0
+	\end{aligned}
+	\end{equation}
+	then $e(x)$ increase every-time I visit $x$; otherwise it decays exponentially. Such function $e(\cdot)$ is a measure of how often and how recently I've visited $x$; recalling the TD error $\delta_t = \ell_{t+1} + \gamma V(x_{t+1}) - V(x_t)$, then the update of the value function is given by
+	\begin{equation}
+		V(x) = V(x) + \alpha \delta_t e_t(x)
+	\end{equation}
+
+\section{Control learning methods}
+	While dealing with \textit{control learning} problems, we have different methods based on the interactivity (if the learned can interact actively with the environment, influencing the future) and the on/off-line performance (if the cost-to-go is compute while learning or after learning), as it can be seen in table \ref{tab:controllearning}.
+	\input{Tables/controllearning.tex}
+	
+	As can be seen in table \ref{tab:RLquantity}, control learning problems are further categorized based on the quantities that need to be learned, as well as on the knowledge of the underlying Markov decision process of the environment.\\
+	It has to be noted that when the MDP in known, that it's required to learn the $V(x)$, while if the MDP is unknown we usually estimate the action-value function $Q(x,u)$ (instead of $V$) since it allows to compute the policy
+	\[ \pi(x) = \arg\min_u Q(x,u) = \arg \min_u \ell(x,u) + \gamma V(x') \]
+	\input{Tables/learnedquantity.tex}
+	
+	As last classification, we have \textit{on-policy learning} when we learn about a given policy $\pi$ using experience sampled from $\pi$ itself, while in \textit{off-policy learning} we learn $\pi$ using experience sampled using another policy $\tilde \pi$.
+	
+\subsection{Q learning}
+	\textit{Q learning} is a direct method\footnote{so it do not require the a-priori knowledge on the Markov decision process} that iteratively updates an estimate $Q_k(x,u)$ (thus the name of the method) of the optimal action-value function $Q^\star(x,u)$. After observing a transition $\big(x,u,\ell, x'\big)$, the algorithm update considering a TD error $\delta$ as follows:
+	\begin{equation} \label{eq:Qlearning}
+	\begin{aligned} 
+		\delta(Q_k) & = \ell + \gamma \min_{u'\in \U} Q\big(x',u'\big) - Q(x,u) \\
+		Q_{k+1}(x,u) & = Q_k(x,u) + \alpha_k\, \delta(Q_k)
+	\end{aligned}
+	\end{equation}
+	
+	At stochastic equilibrium, for each pair $(x,u)$ visited infinitely often it must hold
+	\[ \exp{\delta(Q)} = 0 \qquad \Rightarrow \qquad TQ - Q = 0 \qquad \Rightarrow \qquad Q=Q^\star \]
+	The requirement that $(x,u)$ must be visited infinitely often set a need for exploration, i.e. the learner must be able to learn from any possible condition. $Q_k$ then converges to $Q^\star$ when appropriate learning rates $\alpha_k$ are used.
+	
+	\paragraph{Control strategy} While solving an online learning problem, key is choosing the input $u$ that needs to be applied to the system. A strategy that we might use is to be greedy with respect to the action-value function, i.e.
+	\begin{equation} \label{eq:greedycontrol}
+		u(x) = \arg\min_w Q_k(x,w)
+	\end{equation}
+	
+	This choice allows us to always chose the control that leads to an estimated lower cost in the future, however this might not be optimal since exploration is not ensure and could lead to a large loss over time. A good learner in fact must choose also suboptimal controls in order to explore. 
+	
+	For this reason we might use the so called \textit{$\epsilon$-greedy strategy} for which 
+	\begin{itemize}
+		\item we choose a random control with probability $\epsilon$;
+		\item we choose a greedy control (\ref{eq:greedycontrol}) with probability $1-\epsilon$.
+	\end{itemize}
+	This simple technique ensures exploration, and in practice we can have a value of $\varepsilon$ that changes over time (typically decreasing over time toward zero).
+	
+	
+	Another technique that we might use is the \textit{Boltzmann exploration} for which the control is chosen with a probability $\Pi$ proportional to it's mean, considering so
+	\begin{equation}
+		\Pi(u) = \frac{\textrm{exp}\big(-\beta Q_t(u)\big)}{\sum_{u'\in\U} \textrm{exp}\big(-\beta Q_t(u')\big)}
+	\end{equation}
+	where $Q_t(u)$ is the mean cost obtained applying the control $u$; in this way we choose more often controls that are assumed to lead to a lower cost. Furthermore choosing $\beta\rightarrow \infty$, this strategy reduces to the greedy one.
+	
+	One last technique that we might use is \textit{optimism in the face of uncertainty}, a method that weights the greedy strategy by preferring inputs that have been explored fewer times. We chose in fact the control with the \textit{lowest confidence bound} defined as
+	\begin{equation}
+		\textrm{LCB}(u) = Q_t(u)
+	\end{equation}
+	where the uncertainty on $Q_t(u)$ is
+	\[ Q_t(u) - L \sqrt{\frac{2\log(t)}{n_t(u)}} \]
+	where $L = \max\{|\ell(u)|\}$ and $n_t(u)$ is the number of times that $u$ was selected.
+	
+\subsection{Actor-critic}
+	The \textit{actor-critic methods} can be regarded as a generalized policy iteration (sec. \ref{sec:policyiteration}) extended to unknown Markov decision process. In that case we alternated a policy evaluation with a policy improvement in order to converge to the optimal policy $\pi^\star$.
+	
+	The extension to unknown MDPs is carried out using Monte Carlo (sec. \ref{sec:montecarlo}) or temporal difference (sec. \ref{sec:td}) to evaluate the policy. Since the exact evaluation of $V^\pi$ can take infinitely many samples, the idea is to improve the policy $\pi$ based on an approximation of the value function (so the MC/TD doesn't run until convergence, but for a given amount of time).
+	
+	The value function is called \textit{critic} because it evaluates the policy (so measures "how good" the learner perform), while in turn the \textit{actor} is the policy itself. \\
+	In general the policy used to generate transitions is typically not the same that is evaluated and improved: the \textit{behavior policy} mixes a small amount of exploration into a \textit{target policy}. We note that the generalized policy iteration can generate policies that are worse then the previous ones.
+	
+	\paragraph{SARSA: critic} In the \textit{SARSA method} we use TD0 to learn the \textit{critic} (so the action-value function $Q$) from on-policy samples. After each transition $(x,u,\ell, x',u')$\footnote{using reinforcement learning naming it becomes $(s,a,r,s',a')$, thus the name \textit{SARSA}.} the update of $Q$ is performed as
+	\begin{equation}
+		\begin{aligned}
+			\delta(Q_k) & = \ell(x,u) + \gamma Q(x',u') - Q(x,u) \\
+			Q_{k+1}(x,u) & = Q_k(x,u) + \alpha_k\, \delta(Q_k)
+		\end{aligned}
+	\end{equation}
+	
+	We note the similarity with Q learning (\ref{eq:Qlearning}), but in this case we use $Q(x',u')$ instead of $\min_z Q(x,z)$. Note that if the policy $\pi$ is fixed, then SARSA and TD0 are exactly the same thing.
+	
+	As for temporal difference, we can extend this concept to multi-step evaluation: using TD$\lambda$ gives the method SARSA$(\lambda)$. 
+	
+	From TD, SARSA inherits the possibility of diverging in off-policy settings.
+	
+	\paragraph{SARSA: actor} The goal of an actor-critic method is also to reach the optimal policy, a goal of the \textit{actor} part. The simplest idea to improve the policy is by acting greedily with respect to the action-value function $Q$ (that can be computed on the fly).
+	
+	To ensure exploration we might use $\epsilon$-greedy strategies, but in order to let SARSA converge to the optimal action-value function $Q^\star(x,u)$ we need to ensure that
+	\begin{enumerate}
+		\item we are \textit{Greedy in the Limit with Infinite Exploration} (\textit{GLIE}) policies, so all state-action $(x,u)$ are visited infinitely many times and the policy converges to the greedy one ($\epsilon \xrightarrow{x\rightarrow \infty} 0$);
+		\item the sequence of step sizes $\alpha_k$ satisfies the Robbins-Monroe conditions.
+	\end{enumerate}
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	
+	

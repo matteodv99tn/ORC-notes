@@ -1,0 +1,42 @@
+\begin{algorithm}[p]
+	\caption{pseudo-code for solving the differential dynamic programming problem using the iterative LQR algorithm.}\label{alg:DDP}
+	\begin{algorithmic}
+		\Require $U$ initial set of inputs, $f$ dynamic of the system, $x_0$ initial state
+		\State {\jingAlgo{X} $f(U,x_0)$}
+		\State {\jingAlgo{ \mu} $\mu_0$}
+		\State
+		\While{is not converged}
+		\State {\jingAlgo{\overline U} $U$} \Comment{store reference input trajectory}
+		\State {\jingAlgo{\overline X} $X$} \Comment{store reference state trajectory}
+		\State {\jingAlgo{c_0} $\ell(\overline X, \overline U)$} \Comment{cost with current trajectories}
+		\State
+		\State {\jingAlgo{V_x(N)} $\nabla_x \ell_N$} \Comment{backward pass steps} 
+		\State {\jingAlgo{V_{xx}(N)} $\nabla_{xx}\ell_N$}
+		\For{$i$ from $N-1$ to $0$}
+			\State compute $Q_x,Q_u,Q_{xx}, Q_{uu}, Q_{xu}$ as in (\ref{eq:temp:6})
+			\State {\jingAlgo{\overline Q_{uu}} $Q_{uu} + \mu I$} \Comment{regularization}
+			\State {\jingAlgo{\overline w} $-\overline Q_{uu}^{-1} Q_u$} \Comment{eq. (\ref{eq:temp:7})}
+			\State {\jingAlgo{K} $-\overline Q_{uu}^{-1} Q_{ux}$}
+			% \State compute $\Delta V, V_x, V_{xx}$ as in (\ref{eq:temp:5})
+		\EndFor
+		
+		\State 
+		\State {\jingAlgo{\alpha}$1$} \Comment{forward pass steps}
+		\For{$k$ from $1$ to $k_{max}$} \Comment{perform a line-search}
+			\State {\jingAlgo{X,U} simulate system with input $\overline U + \alpha \overline w + K(x-\overline x)$} 
+			\State {\jingAlgo{c} $\ell(X,U)$}
+			\State {\jingAlgo{\Delta \ell(\alpha)} $\Delta V_0 - \ell(\overline U)$}
+			\If{$c < \gamma c_0$}
+				\State exit the \textit{for} loop
+			\Else \State {\jingAlgo \alpha $k_\alpha \alpha$} \Comment{$k_{\alpha} \in (0,1)$}
+			\EndIf
+			
+		\EndFor
+		\State
+		\If{$k = k_{max}$} \State algorithm has converged \State
+		\Return $U,K$\Comment{open loop control and feedback gains}
+		\EndIf		
+		
+		\EndWhile
+	\end{algorithmic}
+\end{algorithm}
