@@ -188,43 +188,54 @@
 	\end{equation}
 	
 \section{QP-based reactive control}
-	Up to now only simplest controller have been presented for which optimality condition have not been discussed. In this section we will focus more on \textit{optimization-based approaches} that exploits minimization to determine the optimal control solution with the addition of constraints (such actuator effort, joint position and velocity limits\dots) that until now it was not possible to consider.
+	Up to now only simple controllers have been presented, which do not rely on optimality conditions. In this section we turn our attention to \textit{optimization-based approaches} that exploit numerical optimization solvers to determine the optimal control inputs subject to constraints (such as actuator effort, joint position and velocity limits), which until now it was not possible to consider.
 	
-\subsection{Joint space control}
-	To control a desired trajectory in joint space (so given $q^{ref}$), controller (\ref{eq:inversedynamiccontrol}) has been proposed for which
+\subsection{Joint-space control}
+	To track a reference trajectory in joint space $q^{ref}$, we have already discussed the inverse-dynamics controller \eqref{eq:inversedynamiccontrol}, which is:
 	\[ \tau = M \ddot q^d + h \qquad\textrm{with } \ddot q^d = \ddot q^{ref} + K_d \dot e + K_p e \]
-	
-	The same result can be achieved by solving the following \textit{optimal control problem} (\textit{OCP}):
+	%
+	The same result can be achieved by solving the following \textit{optimization problem}:
 	\begin{equation} \label{eq:qpocp}
 	\begin{split}
 		\min_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
 		\textrm{sub. to:}\quad & M \ddot q + h = \tau
 	\end{split}
 	\end{equation}
-	where $\frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2$ is the \textit{cost function} that needs to be minimized with respect to the \textit{minimization variables} $\ddot q, \tau$ and that must be subjected to the \textit{constraint} $M\ddot q + h = \tau$ (the dynamic law).
+	where $\frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2$ is the \textit{cost function} that needs to be minimized with respect to the \textit{decision variables} $\ddot q, \tau$, while satisfying the \textit{constraint} $M\ddot q + h = \tau$ (i.e. the system dynamics).
 	
-	Since in (\ref{eq:qpocp}) the cost is a quadratic function, the minimum is obtained by setting the argument of the norm to zero, i.e. the optimal acceleration is $\ddot q^\star = \ddot q^d$; this implies that the optimal commanded torque is simply $\tau^\star = M \ddot q^d + h$, as in (\ref{eq:inversedynamiccontrol}).
+	Since in \eqref{eq:qpocp} the cost is a squared norm, the minimum is obtained when the argument of the norm is zero, i.e. the optimal acceleration is $\ddot q^\star = \ddot q^d$; this implies that the optimal commanded torques are simply $\tau^\star = M \ddot q^d + h$, as in \eqref{eq:inversedynamiccontrol}.
 	
-	In this case the solution of the minimization problem was trivial, thus applying (\ref{eq:inversedynamiccontrol}) would have been easier, however the formulation (\ref{eq:qpocp}) leaves room for adding other constraints that until were impossible to consider. \\
-	Problem (\ref{eq:qpocp}) is usually referred as a \textit{quadratic program} (\textit{QP}) since the optimization problem has a quadratic cost.
+	In this case the solution of the minimization problem was trivial, thus applying (\ref{eq:inversedynamiccontrol}) would have been easier, however the formulation (\ref{eq:qpocp}) leaves room for adding other constraints, which until now were impossible to consider. \\
+	Problem \eqref{eq:qpocp} is usually referred to as a \textit{Quadratic Program} (\textit{QP}) since the cost is quadratic.
 	
 	\paragraph{Actuator effort bounds} Real actuators can't exert infinitely high forces, but their actions present a saturation limit that acts as a bound. Considering a symmetric behavior on the forces that can be generated, the actuator effort can be bounded as
 	\[ -\tau^{max} \leq \tau \leq \tau^{max} \]
 	
-	Furthermore while dealing with electrical actuators, the motor drivers can handle just a limited amount of current, thus limiting the overall torque that can be generated; this limitation can be described by the following inequality constraint:
-	\[ -i^{max} \leq K_i \tau \leq i^{max} \]
+	Furthermore while dealing with electrical actuators, the motor drivers can handle just a limited amount of current, thus limiting the overall torque that can be generated.
+	Since the motor current $i$ is proportional to the motor torque $\tau$, this limitation can be described by the following inequality constraint:
+	\[ -i^{max} \leq \underbrace{K_i \tau}_{i} \leq i^{max} \]
 	
-	\paragraph{Joint velocity bounds} Actuators also present saturated joint velocities $\dot q^{max}$. We observe that in (\ref{eq:qpocp}) the joint velocity $\dot q$ is not a minimization argument, but is a value that's estimated by the robot itself. To bound the velocity we can use an integral constraint; since we can't act on the current velocity, we might minimize in a way that at the next time-step the velocity doesn't exceed the saturation limit. Exploiting the Euler approximation, it holds that $\dot q(t + \Delta t) = \dot q(t) + \Delta t \, \ddot q$, thus a constraint that we might add to take into account for velocities is
+	\paragraph{Joint velocity bounds} Motors and gears also have limited velocities $\dot q^{max}$. We observe that in \eqref{eq:qpocp} the joint velocity $\dot q$ is not a decision variable, but it is a constant because the control inputs cannot affect the current robot velocity. 
+	Since we can't act on the current velocity, we can ensure that at the next time step the velocity doesn't exceed its limit. 
+	Exploiting the Euler integration scheme, it holds that $\dot q(t + \Delta t) = \dot q(t) + \Delta t \, \ddot q$, thus a constraint that we might add to account for velocity limits is:
 	\[ -\dot q^{max} \leq \dot q + \Delta t \, \ddot q \leq \dot q^{max} \]
 	
-	\paragraph{Joint position bounds} Actuators also have bounded joint position boundaries, i.e. $q $ is constrained to lie in a interval $\big[q^{min}, q^{max}\big]$. To satisfy such constraint we might be tempted to exploit the same trick used for the joint velocity saturation, by so computing $q$ at the next time-step by integrating $\ddot q$, reaching a formulation of the form
+	\paragraph{Joint position bounds} Actuators also have bounded joint positions, i.e. $q $ is constrained to lie in a interval $\big[q^{min}, q^{max}\big]$. 
+	To satisfy such constraint we might be tempted to exploit the same trick used for the joint velocity limits, i.e. to compute $q$ at the next time-step by integrating $\ddot q$ twice, reaching a formulation of the form
 	\[ q^{min} \leq q + \Delta t\, \dot q + \frac 1 2 \Delta t^2 \, \ddot q \leq q^{max} \tag{$\circ$}\]
 	
-	Even if this solution theoretically works, in practice it leads to \textit{unfeasible QPs}: in order not to exceed the joint position saturation at high velocity, the controller is required to set a "high" acceleration $\ddot q$, conflicting with other boundaries set on the actuator efforts.
+	This solution would work if we only had joint position and velocity limits. 
+	However, since in practice we also have joint acceleration limits (which are a direct consequence of the joint torque limits), this approach can lead to an \textit{unfeasible QP}.
+	This is because in order not to exceed the joint position limits, the controller is required to produce a "high" acceleration $\ddot q$, which is incompatible with the actuator capabilities.
 	
-	A heuristic that can be used to overcome this limitation is by exploiting the same constraint ($\circ$), but using a wider time-step $\Delta t$ in order to "predict further in the future" the behavior of the system.
+	A heuristic that can be used to mitigate this issue is by exploiting the same constraint ($\circ$), but using a larger value for the time-step $\Delta t$.
+	This has the effect of "looking further into the future", and thus requiring the joint to decelerate more in advance.
+	However, this can still lead to unfeasibility.
+	An in-depth discussion of this issue can be found in the following paper~\cite{DelPreteRAL2018}, where an exact solution is suggested, under the assumption of constant joint acceleration bounds.
 	
-	\paragraph{QP problem} With the discussions said so far, the optimal control problem in (\ref{eq:qpocp}) can be extended in order to embed all bounds described so far, reaching the formulation
+	
+	\paragraph{QP problem} 
+	The optimal control problem in \eqref{eq:qpocp} can be extended in order to embed all the bounds described so far, reaching the formulation:
 	\begin{equation} \label{eq:qp}
 		\begin{split}
 			\min_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
@@ -235,26 +246,33 @@
 			& q^{min} \leq q + \Delta T\, \dot q + \frac 1 2 \Delta T^2 \, \ddot q \leq q^{max}
 		\end{split}
 	\end{equation}
-	Such OCP is is harder then (\ref{eq:qpocp}) and the solution is usually non-trivial, for this reason \textit{QP solvers} numerical methods have been developed. Since the cost is quadratic we can exploit \textit{convex optimization} that will be revised next.
+	Such problem is harder to solve than \eqref{eq:qpocp} because its solution is usually non-trivial. 
+	For this reason, \textit{QP solvers} are typically used, which are customized software to solve convex QP problems as~\eqref{eq:qpocp}.
+	In the following, we quickly review some common forms of convex optimization problems and discuss how to solve them using free numerical solvers.
 	
-\subsection{Review of convex optimization} \label{sec:qp}
-	In general not all optimization problems have a solution; moreover for control purposes the execution time of numerical algorithms is fundamental since we want to control the system with less delay as possible.
+\subsection{Taxonomy of convex optimization problems} \label{sec:qp}
+	In general not all optimization problems can be solved; moreover, for control purposes, the execution time of numerical algorithms is fundamental since we want to control the system with as little delay as possible.
+	Optimization problems (\ref{eq:qpocp}) and (\ref{eq:qp}) are \textit{least-squares problems} (\textit{LSP}), which are a special subclass of convex optimization problems.
+%	They are characterized by linear constraints (of the form $Ax\leq b$ or $Ax = b$) and a cost function that is a squared norm of an affine function, i.e. in the form $\|Ax + b\|^2$.
 	
-	\paragraph{Taxonomy of convex optimization problems} Optimization problems (\ref{eq:qpocp}) and (\ref{eq:qp}) are particular minimization referred usually as \textit{least square problems} (\textit{LSP}) that are characterized by having linear constraint (of the form $Ax\leq b$ or $Ax = b$) and a cost function that is a squared norm of a linear function, i.e. in the form $\|Ax + b\|^2$.
+	\paragraph{Quadratic Programs}
+	LSPs are a subclass of convex \textit{quadratic programs} (\textit{QPs}), which have linear constraints and a \textit{convex quadratic cost} in the form
+	\begin{equation} \label{eq:qp_cost}
+	\frac 1 2 x^\top H x + g^\top x
+	\end{equation}
+	with $H$ being a semi-positive definite matrix\footnote{A matrix $H$ is semi-positive definite if $x^T H x \ge 0 \quad \forall x$.}.
 	
-	LSPs are a subclass of \textit{quadratic programs} (\textit{QPs}) optimization problems that are still characterized by linear constraints and a \textit{convex quadratic cost} in the form
-	\[ \frac 1 2 x^\top H x + g^\top x  \]
-	with $H$ that's a semi-positive definite matrix.
+	Since there exist more numerical solvers for QPs than for LSPs, often LSPs are solved using QP solvers (still "ad hoc" solvers might find the solution more efficiently). 
+	What is important for us, is that in general LSPs and QPs can be solved in low time with off-the-shelf softwares.
 	
-	Numerical solvers are usually developed for QP problems, but they can be used also to solve least square programs (still "ad hoc" solvers might find the solution more efficiently). In general LSPs and QPs are \textit{convex optimization problems} that can be solved in low time with off-the-shelf softwares.
-	
-	\paragraph{Least square programs} LSPs are characterized by a cost function of the form
+	\paragraph{Least-squares programs} 
+	LSPs are characterized by a cost function of the form
 	\begin{equation} \label{eq:lspfunction}
 		f(x) = \frac 12 \big\|Ax - b\big\|^2 = \frac 1 2 \big(Ax-b\big)^\top\big(Ax -b\big) = \frac 1 2 x^\top A^\top A x - b^\top A x + \frac 1 2 b^\top b 
 	\end{equation}
-	Calling the product $A^\top A$ as $H$ that by definition is positive definite, then the similarity of LSPs with QPs is clear.
+	We can notice that this cost is a special case of~\eqref{eq:qp_cost} because by setting $H = A^\top A$ (which by definition is semi-positive definite), and $g = -A^\top b$, we recover the cost of a general QP.
 	
-	Since the problem is convex then there's only one stationary point $x^\star$ of $f$ that's also the global minimum; $x^\star$ can be computed by setting to zero the gradient of the cost $f$, i.e. solving
+	Since the problem is convex then there is only one stationary point $x^\star$ of $f$, which is also the global minimum; $x^\star$ can be computed by setting to zero the gradient of the cost $f$, i.e. solving:
 	\[ \nabla f = A^\top A x - A^\top b = 0 \]
 	Assuming that $A^\top A$ is invertible the explicit solution of the minimizing argument is
 	\begin{equation*} \tag{$\dagger$}
@@ -265,59 +283,60 @@
 		x^\star = A^\top \big(AA^\top\big)^{-1} b
 	\end{equation*}
 	Plugging such optimal solution in (\ref{eq:lspfunction}) leads in fact to a zero (minimum) cost:
-	\[ f(x^\star) =\big\| AA^\top\big(AA^\top\big)^{-1} b \big\|^2 = \|Ib-b\|^1 = 0 \]
+	\[ f(x^\star) =\big\| AA^\top\big(AA^\top\big)^{-1} b - b \big\|^2 = \|b-b\|^2 = 0 \]
 	
-	In general the solution of least square minimization problem is determined by means of the \textit{Moore-Penrose pseudo-inverse $A^\top$} as
+	In general, the solution of least-squares minimization problem is determined by means of the \textit{Moore-Penrose pseudo-inverse $A^\dagger$} as
 	\begin{equation} \label{eq:lspsol}
-		x^\star = \min_x \big\| Ax - b \big\|^2 = A^+ b
+		x^\star = \arg \min_x \big\| Ax - b \big\|^2 = A^\dagger b
 	\end{equation}
 	where
 	\begin{equation}
-		A^+ = \begin{cases}
-			A^\top\big(AA^\top\big)^{-1} & \textrm{if $A$ is a full-row rank matrix} \\
-			\big(A^\top A\big)^{-1}A^\top & \textrm{if $A$ is a full-column rank matrix} 
+		A^\dagger = \begin{cases}
+			A^\top\big(AA^\top\big)^{-1} & \textrm{if $A$ is full-row rank} \\
+			\big(A^\top A\big)^{-1}A^\top & \textrm{if $A$ is full-column rank} 
 		\end{cases}
 	\end{equation}
 	
-	We observe now that both solutions ($\dagger$) and ($\ddagger$) have been obtained considering the respective definition of the Moore-Penrose pseudo-inverse based on the condition of the matrix $A$ (leading to the invertibility of $A^\top A$). Moreover, if $A$ is neither full-row and columns rank, still $A^+$ can be computed by means of the singular value decomposition, thus an optimal solution (\ref{eq:lspsol}) always exists for (\ref{eq:lspfunction}).
+	We observe now that both solutions have been obtained considering the respective definition of the Moore-Penrose pseudo-inverse based on the condition of the matrix $A$ (leading to the invertibility of $A^\top A$ or $A A^\top$). 
+	Moreover, if $A$ is neither full-row and nor full-column rank, still $A^\dagger$ can be computed by means of the singular value decomposition, thus the optimal solution (\ref{eq:lspsol}) always exists for (\ref{eq:lspfunction}).
 	
-\subsection{Cartesian space control}
-	We can use quadratic programs also to solve control problem in cartesian space. Recalling the desired cartesian acceleration $\ddot x^d = \ddot x^{ref} + K_p\big(x^{ref}-x\big) + K_d\big(\dot x^{ref} - \dot x\big)$ defined in (\ref{eq:cartesiancontroller}), we can formulate the control problem as th following optimization:
+\subsection{Cartesian-Space Control}
+	We can use quadratic programs also to solve control problems in Cartesian space. 
+	Recalling the desired Cartesian acceleration $\ddot x^d = \ddot x^{ref} + K_p\big(x^{ref}-x\big) + K_d\big(\dot x^{ref} - \dot x\big)$ defined in (\ref{eq:cartesiancontroller}), we can formulate the control problem as:
 	\begin{align*}
 		\min_{\tau, \ddot q} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
 		\textrm{sub. to:} \quad & M\ddot q + h = \tau
 	\end{align*}
-	The main issue with this formulation is that the cost function lacks the dependence of the \textit{decision variables} that are just $\tau$ and $\ddot q$; in this case we have simply to add a new constraint relating $\ddot x$ with $\ddot q$, i.e. 
+	The main issue with this formulation is that the cost function is independent of the \textit{decision variables} $\tau$ and $\ddot q$; in this case we must simply add a new constraint, relating $\ddot x$ with $\ddot q$, i.e. 
 	\begin{equation}
 	\begin{aligned}
-		\min_{\tau, \ddot q} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
+		\min_{\tau, \ddot q, \ddot x} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
 		\textrm{sub. to:} \quad & M\ddot q + h = \tau \\
 		& \ddot x = J\ddot q + \dot J \dot q
 	\end{aligned}
 	\end{equation}
-	To improve the numerical performance of the algorithm we can remove the lastly added constraint and explicitly substitute it in the cost function, reaching the following OCP:
+	To improve the numerical performance of the algorithm we can remove the last constraint and explicitly substitute it in the cost function:
 	\begin{equation} \label{eq:qpcartesian}
 		\begin{aligned}
 			\min_{\tau, \ddot q} \quad & \frac12 \big\| J\ddot q + \dot J\dot q - \ddot x^d\|^2 \\
 			\textrm{sub. to:} \quad & M\ddot q + h = \tau
 		\end{aligned}
 	\end{equation}
+	Exploiting (\ref{eq:lspsol}) we can see that the optimal joint accelerations and torques are computed simply as
+	\[ \ddot q^\star = J^\dagger \big(\ddot x^d - \dot J\dot q\big) \qquad \tau^\star = M \ddot q^\star + h \tag{$\triangle$} \]
+	where in this case the coefficient $b$ is equal to $\ddot x^d - \dot J \dot q$ (all these quantities are constant in the problem).
 	
-	Exploiting (\ref{eq:lspsol}) the optimal joint accelerations and torques are computed simply as
-	\[ \ddot q^\star = J^+ \big(\ddot x^d - \dot J\dot q\big) \qquad \tau^\star = M \ddot q^\star + h \tag{$\triangle$} \]
-	where in this case the coefficient $b$ is made by $\ddot x^d - \dot J \dot q$ (since all this quantities are known beforehand).
-	
-	\textbf{TODO: confrontare risultato con quello ottenuto in precedenza (pseudoinversa pesata)}
+%	\textbf{TODO: confrontare risultato con quello ottenuto in precedenza (pseudoinversa pesata)}
 	
 	
-\subsection{Task space control}
-	In this section we'll further generalize the concept of control in such a way that the target is not just a joint configuration or the end effector in cartesian coordinate, but a \textit{task}, a \textit{control objective} that the robot should achieve.
+\subsection{Task-Space Control}
+	In this section we generalize the concept of Cartesian-space control so that we can control not just the end-effector in Cartesian coordinates, but a \textit{task} (a.k.a. a \textit{control objective}) that the robot should achieve.
 	
-	Each task is usually described by an \textit{error function} $e(\cdot)$ that needs to be minimized; in all previous seen cases the error was just the difference between the current configuration and a reference one, i.e.
+	Each task is usually described by an \textit{error function} $e(\cdot)$ that needs to be brought to zero; in all previous cases the error was just the difference between the current configuration and a reference one, i.e.
 	\begin{equation}
 		e(x,u,t) = y(x,u) - y^{ref}(t)
 	\end{equation}
-	where $x = (q,\dot q)$ are in this case the \textit{states} of the system and $u=\tau$ the inputs (using a more general notation).
+	where $x = (q,\dot q)$ is the \textit{state} of the system, and $u=\tau$ the inputs (using a more general notation).
 	
 	Since QP problems requires an error function $e$ that must be affine in the decision variable $\ddot q$, a transformation is required (such the one to solve the controls in cartesian space); minimizing directly $e$ is not possible as in general it depends only on $q$ and $\dot q$, not $\ddot q$ explicitly.\\
 	To reach this goal we must impose the following two conditions on $e$ (or on it's derivative $\dot e,\ddot e$) for which:
