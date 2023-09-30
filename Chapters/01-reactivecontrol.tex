@@ -60,7 +60,8 @@
 	We can therefore try to design a control law that works directly with a Cartesian-space reference trajectory $x^{ref}(t)$. We want to compute the joint torques $\tau(t)$ such that the end-effector trajectory $x(t) \in \mathds R^3$ (in Cartesian coordinates) follows $x^{ref}(t)$:
 	\[ x(t) \simeq x^{ref}(t) \]
 	
-	\paragraph{Operational-Space Control} Let us start by defining the relationship between the end-effector position $x \in \mathds{R}^3$ and the joint configuration $q$, which is the so-called \emph{forward geometry} function:
+	\subsection{Operational-Space Control} 
+	Let us start by defining the relationship between the end-effector position $x \in \mathds{R}^3$ and the joint configuration $q$, which is the so-called \emph{forward geometry} function:
 	\begin{equation}
 	x = \text{FG}(q)
 	\end{equation}
@@ -117,7 +118,8 @@
 	\end{align*}
 	As long as the systems does not move too fast, the term $\dot J \dot q$ is negligible and the end-effectors acceleration $\ddot x$ matches the desired one $\ddot x^d$.
 	
-	\paragraph{Redundancy resolution} Controller \eqref{eq:cartesiancontroller} aims just to control the 3D motion of the end-effector; however, the number of actuated joints $n$ typically exceeds the 3 degrees of freedom of the end-effector, therefore there are theoretically infinitely many joint configurations that allow to achieve the same end-effector position. The suggested control tracks the desired end-effector position, but it might happen over time that the system reaches \textit{singular configurations} for which $J$ is no longer full-row rank (losing the capability to move in some directions): in this case $JM^{-1}J^\top$ is no longer invertible and the control law cannot be computed.
+	\subsubsection{Redundancy resolution} \label{sssec:redundancy}
+	Controller \eqref{eq:cartesiancontroller} aims just to control the 3D motion of the end-effector; however, the number of actuated joints $n$ typically exceeds the 3 degrees of freedom of the end-effector, therefore there are theoretically infinitely many joint configurations that allow to achieve the same end-effector position. The suggested control tracks the desired end-effector position, but it might happen over time that the system reaches \textit{singular configurations} for which $J$ is no longer full-row rank (losing the capability to move in some directions): in this case $JM^{-1}J^\top$ is no longer invertible and the control law cannot be computed.
 	
 	\textit{Redundancy resolution} aims to solve this problem: since there are infinitely many configurations that allow to achieve a desired $x$, the idea is now to find some additional joint torques that do not impact the end-effector motion, but helps avoiding singular configurations.
 	
@@ -188,91 +190,47 @@
 	\end{equation}
 	
 \section{QP-based reactive control}
-	Up to now only simple controllers have been presented, which do not rely on optimality conditions. In this section we turn our attention to \textit{optimization-based approaches} that exploit numerical optimization solvers to determine the optimal control inputs subject to constraints (such as actuator effort, joint position and velocity limits), which until now it was not possible to consider.
+	Up to this point, we have discussed only classic control methods, mainly from the 60's-80's, which do not rely on numerical optimization. In this section we turn our attention to \textit{optimization-based approaches}, which exploit numerical optimization solvers to determine the optimal control inputs. The main advantage of these methods is that they can account for constraints (such as actuator effort, joint position and velocity limits), which classic approaches could not consider.
+	Before delving into this new class of control methods, let us quickly review the kind of convex optimization problems that will be used in this section.
 	
-\subsection{Joint-space control}
-	To track a reference trajectory in joint space $q^{ref}$, we have already discussed the inverse-dynamics controller \eqref{eq:inversedynamiccontrol}, which is:
-	\[ \tau = M \ddot q^d + h \qquad\textrm{with } \ddot q^d = \ddot q^{ref} + K_d \dot e + K_p e \]
-	%
-	The same result can be achieved by solving the following \textit{optimization problem}:
-	\begin{equation} \label{eq:qpocp}
-	\begin{split}
-		\min_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
-		\textrm{sub. to:}\quad & M \ddot q + h = \tau
-	\end{split}
-	\end{equation}
-	where $\frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2$ is the \textit{cost function} that needs to be minimized with respect to the \textit{decision variables} $\ddot q, \tau$, while satisfying the \textit{constraint} $M\ddot q + h = \tau$ (i.e. the system dynamics).
-	
-	Since in \eqref{eq:qpocp} the cost is a squared norm, the minimum is obtained when the argument of the norm is zero, i.e. the optimal acceleration is $\ddot q^\star = \ddot q^d$; this implies that the optimal commanded torques are simply $\tau^\star = M \ddot q^d + h$, as in \eqref{eq:inversedynamiccontrol}.
-	
-	In this case the solution of the minimization problem was trivial, thus applying (\ref{eq:inversedynamiccontrol}) would have been easier, however the formulation (\ref{eq:qpocp}) leaves room for adding other constraints, which until now were impossible to consider. \\
-	Problem \eqref{eq:qpocp} is usually referred to as a \textit{Quadratic Program} (\textit{QP}) since the cost is quadratic.
-	
-	\paragraph{Actuator effort bounds} Real actuators can't exert infinitely high forces, but their actions present a saturation limit that acts as a bound. Considering a symmetric behavior on the forces that can be generated, the actuator effort can be bounded as
-	\[ -\tau^{max} \leq \tau \leq \tau^{max} \]
-	
-	Furthermore while dealing with electrical actuators, the motor drivers can handle just a limited amount of current, thus limiting the overall torque that can be generated.
-	Since the motor current $i$ is proportional to the motor torque $\tau$, this limitation can be described by the following inequality constraint:
-	\[ -i^{max} \leq \underbrace{K_i \tau}_{i} \leq i^{max} \]
-	
-	\paragraph{Joint velocity bounds} Motors and gears also have limited velocities $\dot q^{max}$. We observe that in \eqref{eq:qpocp} the joint velocity $\dot q$ is not a decision variable, but it is a constant because the control inputs cannot affect the current robot velocity. 
-	Since we can't act on the current velocity, we can ensure that at the next time step the velocity doesn't exceed its limit. 
-	Exploiting the Euler integration scheme, it holds that $\dot q(t + \Delta t) = \dot q(t) + \Delta t \, \ddot q$, thus a constraint that we might add to account for velocity limits is:
-	\[ -\dot q^{max} \leq \dot q + \Delta t \, \ddot q \leq \dot q^{max} \]
-	
-	\paragraph{Joint position bounds} Actuators also have bounded joint positions, i.e. $q $ is constrained to lie in a interval $\big[q^{min}, q^{max}\big]$. 
-	To satisfy such constraint we might be tempted to exploit the same trick used for the joint velocity limits, i.e. to compute $q$ at the next time-step by integrating $\ddot q$ twice, reaching a formulation of the form
-	\[ q^{min} \leq q + \Delta t\, \dot q + \frac 1 2 \Delta t^2 \, \ddot q \leq q^{max} \tag{$\circ$}\]
-	
-	This solution would work if we only had joint position and velocity limits. 
-	However, since in practice we also have joint acceleration limits (which are a direct consequence of the joint torque limits), this approach can lead to an \textit{unfeasible QP}.
-	This is because in order not to exceed the joint position limits, the controller is required to produce a "high" acceleration $\ddot q$, which is incompatible with the actuator capabilities.
-	
-	A heuristic that can be used to mitigate this issue is by exploiting the same constraint ($\circ$), but using a larger value for the time-step $\Delta t$.
-	This has the effect of "looking further into the future", and thus requiring the joint to decelerate more in advance.
-	However, this can still lead to unfeasibility.
-	An in-depth discussion of this issue can be found in the following paper~\cite{DelPreteRAL2018}, where an exact solution is suggested, under the assumption of constant joint acceleration bounds.
-	
-	
-	\paragraph{QP problem} 
-	The optimal control problem in \eqref{eq:qpocp} can be extended in order to embed all the bounds described so far, reaching the formulation:
-	\begin{equation} \label{eq:qp}
-		\begin{split}
-			\min_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
-			\textrm{sub. to:}\quad & M \ddot q + h = \tau \\
-			& -\tau^{max} \leq \tau \leq \tau^{max} \\
-			& -i^{max} \leq K_i \tau \leq i^{max} \\
-			& -\dot q^{max} \leq \dot q + \Delta t \, \ddot q \leq \dot q^{max} \\
-			& q^{min} \leq q + \Delta T\, \dot q + \frac 1 2 \Delta T^2 \, \ddot q \leq q^{max}
-		\end{split}
-	\end{equation}
-	Such problem is harder to solve than \eqref{eq:qpocp} because its solution is usually non-trivial. 
-	For this reason, \textit{QP solvers} are typically used, which are customized software to solve convex QP problems as~\eqref{eq:qpocp}.
-	In the following, we quickly review some common forms of convex optimization problems and discuss how to solve them using free numerical solvers.
-	
-\subsection{Taxonomy of convex optimization problems} \label{sec:qp}
+	\subsection{Taxonomy of convex optimization problems} \label{sec:qp}
 	In general not all optimization problems can be solved; moreover, for control purposes, the execution time of numerical algorithms is fundamental since we want to control the system with as little delay as possible.
-	Optimization problems (\ref{eq:qpocp}) and (\ref{eq:qp}) are \textit{least-squares problems} (\textit{LSP}), which are a special subclass of convex optimization problems.
-%	They are characterized by linear constraints (of the form $Ax\leq b$ or $Ax = b$) and a cost function that is a squared norm of an affine function, i.e. in the form $\|Ax + b\|^2$.
+	In this section, we are mainly concerned with two kinds of convex optimization problems: i) Least-Squares Programs (LSP's) and ii) Quadratic Programs (QP's) \footnote{QP's can be either convex or not, but for the rest of this section we will restrict our discussion to convex QP's.}.
+	LSP's are problem with affine equality/inequality constraints and a cost function that is the squared norm of an affine function:
+	\begin{eqs}{eq:lsp}
+	\minimize_{x} \quad & \frac{1}{2} || A x - b||^2 \\
+	\st \quad & A_{eq} x = b_{eq} \\
+	& A_{in} x \le b_{in}
+	\end{eqs}
+	QP's admit the same constraints as LSP's, but a more general kind of cost (i.e. quadratic):
+	\begin{eqs}{eq:qp}
+	\minimize_{x} \quad & \frac{1}{2} x^\T H x + g^\T x \\
+	\st \quad & A_{eq} x = b_{eq} \\
+	& A_{in} x \le b_{in}
+	\end{eqs}
+	The QP is convex if and only if the Hessian matrix $H$ is positive semi-definite (i.e. all its eigenvalues have non-negative real part), which implies:
+	\begin{eqs}{eq:psd_matrix}
+	x^\T H x \ge 0 \qquad \forall x
+	\end{eqs}
+	LSP's are a subclass of QP's, which can be clearly seen by expanding the cost function of~\eqref{eq:lsp}:
+	\begin{eqs}{eq:lsp_cost}
+	\half || A x - b ||^2 = \half x^\T \underbrace{A^\T A}_H x \underbrace{- b^\T A}_{g^\T} x + \half b^\T b,
+	\end{eqs}
+	where we have highlighted the connection with the Hessian matrix $H$ and gradient vector $g$ of the QP's cost.
+	The Hessian of an LSP's cost is always positive semi-definite because the quadratic term can be interpreted as a norm of another vector $y \triangleq A x$, which cannot be negative:
+	\begin{eqs}{eq:lsp_hessian}
+	x^\T A^\T A x = y^\T y = || y ||^2 \ge 0 \qquad \forall x
+	\end{eqs}
+	The reason why the class of LSP's is strict contained in the class of QP's is because of the gradient vector, which cannot be arbitrarely chosen in an LSP, but must be related to the problem's Hessian through the matrix $A$: $g = A^\T b$. 
+	Indeed, this relationship implies that $g$ must be a linear combination of the rows of $A$.
 	
-	\paragraph{Quadratic Programs}
-	LSPs are a subclass of convex \textit{quadratic programs} (\textit{QPs}), which have linear constraints and a \textit{convex quadratic cost} in the form
-	\begin{equation} \label{eq:qp_cost}
-	\frac 1 2 x^\top H x + g^\top x
-	\end{equation}
-	with $H$ being a semi-positive definite matrix\footnote{A matrix $H$ is semi-positive definite if $x^T H x \ge 0 \quad \forall x$.}.
+	Both LSP's and QP's are convex optimization problem that can be solved sufficiently fast to be used inside fast control loops (i.e. with control frequencies between 100 and 1000 Hz). 
+	Moreover, since LSP's are a special kind of QP's, QP solvers can be used also to solve LSP's. 
+	Indeed, since QP solvers are more common than LSP solvers, often times people use QP solvers to solve LSP's.
 	
-	Since there exist more numerical solvers for QPs than for LSPs, often LSPs are solved using QP solvers (still "ad hoc" solvers might find the solution more efficiently). 
-	What is important for us, is that in general LSPs and QPs can be solved in low time with off-the-shelf softwares.
-	
-	\paragraph{Least-squares programs} 
-	LSPs are characterized by a cost function of the form
-	\begin{equation} \label{eq:lspfunction}
-		f(x) = \frac 12 \big\|Ax - b\big\|^2 = \frac 1 2 \big(Ax-b\big)^\top\big(Ax -b\big) = \frac 1 2 x^\top A^\top A x - b^\top A x + \frac 1 2 b^\top b 
-	\end{equation}
-	We can notice that this cost is a special case of~\eqref{eq:qp_cost} because by setting $H = A^\top A$ (which by definition is semi-positive definite), and $g = -A^\top b$, we recover the cost of a general QP.
-	
-	Since the problem is convex then there is only one stationary point $x^\star$ of $f$, which is also the global minimum; $x^\star$ can be computed by setting to zero the gradient of the cost $f$, i.e. solving:
+	\subsubsection{Solving Unconstrained LSP's}
+	Since LSP's are convex, then any stationary point $x^\star$ of the cost function $f(x)$ is also a global minimizer of the cost.
+	In case the LSP has no constraints, $x^\star$ can be computed by setting to zero the gradient of the cost $f$, i.e. solving:
 	\[ \nabla f = A^\top A x - A^\top b = 0 \]
 	Assuming that $A^\top A$ is invertible the explicit solution of the minimizing argument is
 	\begin{equation*} \tag{$\dagger$}
@@ -282,7 +240,7 @@
 	\begin{equation*} \tag{$\ddagger$}
 		x^\star = A^\top \big(AA^\top\big)^{-1} b
 	\end{equation*}
-	Plugging such optimal solution in (\ref{eq:lspfunction}) leads in fact to a zero (minimum) cost:
+	We can verify that this is indeed a minimizer of $f$ by substituting it in the cost function, and checking that it leads in fact to a zero (minimum) cost:
 	\[ f(x^\star) =\big\| AA^\top\big(AA^\top\big)^{-1} b - b \big\|^2 = \|b-b\|^2 = 0 \]
 	
 	In general, the solution of least-squares minimization problem is determined by means of the \textit{Moore-Penrose pseudo-inverse $A^\dagger$} as
@@ -298,54 +256,145 @@
 	\end{equation}
 	
 	We observe now that both solutions have been obtained considering the respective definition of the Moore-Penrose pseudo-inverse based on the condition of the matrix $A$ (leading to the invertibility of $A^\top A$ or $A A^\top$). 
-	Moreover, if $A$ is neither full-row and nor full-column rank, still $A^\dagger$ can be computed by means of the singular value decomposition, thus the optimal solution (\ref{eq:lspsol}) always exists for (\ref{eq:lspfunction}).
+	Even if $A$ is neither full-row and nor full-column rank, its pseudo-inverse $A^\dagger$ can still be computed by means of a matrix decomposition (e.g. Singular Value Decomposition).
 	
+
+	
+\subsection{Joint-space control}
+	To track a reference trajectory in joint space $q^{ref}$, we have already discussed the inverse-dynamics controller \eqref{eq:inversedynamiccontrol}, which is:
+	\[ \tau = M \ddot q^d + h \qquad\textrm{with } \ddot q^d = \ddot q^{ref} + K_d \dot e + K_p e \]
+	%
+	The same result can be achieved by solving the following LSP:
+	\begin{equation} \label{eq:qpocp}
+	\begin{split}
+		\minimize_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
+		\st \quad & M \ddot q + h = \tau
+	\end{split}
+	\end{equation}
+	where $\frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2$ is the \textit{cost function} that needs to be minimized with respect to the \textit{decision variables} $\ddot q, \tau$, while satisfying the \textit{constraint} $M\ddot q + h = \tau$ (i.e. the system dynamics).
+	
+	Since in \eqref{eq:qpocp} the cost is a squared norm, the minimum is obtained when the argument of the norm is zero, i.e. the optimal acceleration is $\ddot q^\star = \ddot q^d$; this implies that the optimal commanded torques are simply $\tau^\star = M \ddot q^d + h$, as in \eqref{eq:inversedynamiccontrol}.
+	
+	In this case the solution of the minimization problem was trivial, thus applying \eqref{eq:inversedynamiccontrol} would have been easier, however the formulation \eqref{eq:qpocp} leaves room for adding other constraints, which until now were impossible to consider. 
+		
+	\paragraph{Actuator effort bounds} Real actuators can't exert infinitely high forces, but their actions present a saturation limit that acts as a bound. Considering a symmetric behavior on the forces that can be generated, the actuator effort can be bounded as
+	\[ -\tau^{max} \leq \tau \leq \tau^{max} \]
+	
+	Furthermore while dealing with electrical actuators, the motor drivers can handle just a limited amount of current, thus limiting the overall torque that can be generated.
+	Since the motor current $i$ is proportional to the motor torque $\tau$, this limitation can be described by the following inequality constraint:
+	\[ -i^{max} \leq \underbrace{K_i \tau}_{i} \leq i^{max} \]
+	
+	\paragraph{Joint velocity bounds} Motors and gears also have limited velocities $\dot q^{max}$. We observe that in \eqref{eq:qpocp} the joint velocity $\dot q$ is not a decision variable, but it is a constant because the control inputs cannot affect the current robot velocity. 
+	Since we can't act on the current velocity, we can ensure that at the next time step the velocity doesn't exceed its limit. 
+	Assuming joint accelerations remain constant during the time step, which is reasonable because time steps are usually very short in reactive control schemes, we have that $\dot q(t + \Delta t) = \dot q(t) + \Delta t \, \ddot q$, thus a constraint that we might add to account for velocity limits is:
+	\[ -\dot q^{max} \leq \dot q + \Delta t \, \ddot q \leq \dot q^{max} \]
+	
+	\paragraph{Joint position bounds} Actuators also have bounded joint positions, i.e. $q $ is constrained to lie in a interval $\big[q^{min}, q^{max}\big]$. 
+	To satisfy such constraint we might be tempted to exploit the same trick used for the joint velocity limits, i.e. to compute $q$ at the next time-step by integrating $\ddot q$ twice, reaching a formulation of the form
+	\[ q^{min} \leq q + \Delta t\, \dot q + \frac 1 2 \Delta t^2 \, \ddot q \leq q^{max} \tag{$\circ$}\]
+	
+	This solution would work if we only had joint position and velocity limits. 
+	However, since in practice we also have joint acceleration limits (which are a direct consequence of the joint torque limits), this approach can lead to an \textit{unfeasible QP}.
+	This is because in order not to exceed the joint position limits, the controller might be required to produce a "high" (in absolute value) acceleration $\ddot q$ that is incompatible with the actuator capabilities.
+	
+	A heuristic that can be used to mitigate this issue is to use the constraint ($\circ$) with a larger value for the time-step $\Delta t$.
+	This has the effect of "looking further into the future", and thus requiring the joint to decelerate more in advance.
+	However, this is not sufficient in general to ensure feasibility.
+	An in-depth discussion of this issue can be found in the paper~\cite{DelPreteRAL2018}, where an exact solution is suggested, under the assumption of constant joint acceleration bounds.
+	We will come back to this issue when discussing Model Predictive Control methods, which are more suited to account for this kind of state constraints.
+	
+	
+	\paragraph{QP problem} 
+	The optimal control problem in \eqref{eq:qpocp} can be extended in order to embed all the bounds described so far, reaching the formulation:
+	\begin{equation} \label{eq:qp}
+		\begin{split}
+			\minimize_{\tau, \ddot q}\quad & \frac 1 2 \big\|\ddot q - \ddot q^d \big\|^2 = \frac 1 2 \big(\ddot q - \ddot q^d\big)^\top \big(\ddot q - \ddot q^d\big) \\
+			\st \quad & M \ddot q + h = \tau \\
+			& -\tau^{max} \leq \tau \leq \tau^{max} \\
+			& -i^{max} \leq K_i \tau \leq i^{max} \\
+			& -\dot q^{max} \leq \dot q + \Delta t \, \ddot q \leq \dot q^{max} \\
+			& q^{min} \leq q + \Delta T\, \dot q + \frac 1 2 \Delta T^2 \, \ddot q \leq q^{max}
+		\end{split}
+	\end{equation}
+	Such problem is harder to solve than \eqref{eq:qpocp} because its solution is usually non-trivial. 
+	For this reason, \textit{QP solvers} are typically used, which are customized software to solve convex QP problems as~\eqref{eq:qpocp}.
+	
+
 \subsection{Cartesian-Space Control}
 	We can use quadratic programs also to solve control problems in Cartesian space. 
-	Recalling the desired Cartesian acceleration $\ddot x^d = \ddot x^{ref} + K_p\big(x^{ref}-x\big) + K_d\big(\dot x^{ref} - \dot x\big)$ defined in (\ref{eq:cartesiancontroller}), we can formulate the control problem as:
-	\begin{align*}
-		\min_{\tau, \ddot q} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
-		\textrm{sub. to:} \quad & M\ddot q + h = \tau
-	\end{align*}
-	The main issue with this formulation is that the cost function is independent of the \textit{decision variables} $\tau$ and $\ddot q$; in this case we must simply add a new constraint, relating $\ddot x$ with $\ddot q$, i.e. 
+	Recalling the desired Cartesian acceleration $\ddot x^d = \ddot x^{ref} + K_p\big(x^{ref}-x\big) + K_d\big(\dot x^{ref} - \dot x\big)$ defined in \eqref{eq:cartesiancontroller}, and recalling the relationship between Cartesian-space and joint space accelerations $\ddot{x} = J\ddot{q} + \dot{J} \dot{q}$, we can formulate the problem as:
 	\begin{equation}
 	\begin{aligned}
-		\min_{\tau, \ddot q, \ddot x} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
-		\textrm{sub. to:} \quad & M\ddot q + h = \tau \\
+		\minimize_{\tau, \ddot q, \ddot x} \quad & \frac12 \big\|\ddot x - \ddot x^d\|^2 \\
+		\st \quad & M\ddot q + h = \tau \\
 		& \ddot x = J\ddot q + \dot J \dot q
 	\end{aligned}
 	\end{equation}
 	To improve the numerical performance of the algorithm we can remove the last constraint and explicitly substitute it in the cost function:
 	\begin{equation} \label{eq:qpcartesian}
 		\begin{aligned}
-			\min_{\tau, \ddot q} \quad & \frac12 \big\| J\ddot q + \dot J\dot q - \ddot x^d\|^2 \\
-			\textrm{sub. to:} \quad & M\ddot q + h = \tau
+			\minimize_{\tau, \ddot q} \quad & \frac12 \big\| J\ddot q + \dot J\dot q - \ddot x^d\|^2 \\
+			\st \quad & M\ddot q + h = \tau
 		\end{aligned}
 	\end{equation}
 	Exploiting (\ref{eq:lspsol}) we can see that the optimal joint accelerations and torques are computed simply as
-	\[ \ddot q^\star = J^\dagger \big(\ddot x^d - \dot J\dot q\big) \qquad \tau^\star = M \ddot q^\star + h \tag{$\triangle$} \]
+	\begin{eqs}{eq:cartesian_qp_sol}
+	\ddot q^\star = J^\dagger \big(\ddot x^d - \dot J\dot q\big) \qquad \tau^\star = M \ddot q^\star + h
+	\end{eqs}
 	where in this case the coefficient $b$ is equal to $\ddot x^d - \dot J \dot q$ (all these quantities are constant in the problem).
+	Notice that by using a weighted pseudo-inverse\footnote{A weighted pseudo-inverse of a full-row rank matrix $A$, with weight matrix $W$, is defined as $W A^\T (A W A^\T)^{-1}$.} in \eqref{eq:cartesian_qp_sol} with $M^{-1}$ as weight matrix, we would recover the Operational-Space Control law.
 	
 %	\textbf{TODO: confrontare risultato con quello ottenuto in precedenza (pseudoinversa pesata)}
 	
 	
 \subsection{Task-Space Control}
-	In this section we generalize the concept of Cartesian-space control so that we can control not just the end-effector in Cartesian coordinates, but a \textit{task} (a.k.a. a \textit{control objective}) that the robot should achieve.
+	In this section we generalize the concept of Cartesian-space control so that we can control not just the end-effector in Cartesian coordinates, but any \textit{task} (a.k.a. a \textit{control objective}) that the robot should achieve.
 	
-	Each task is usually described by an \textit{error function} $e(\cdot)$ that needs to be brought to zero; in all previous cases the error was just the difference between the current configuration and a reference one, i.e.
+	Each task is usually described by an \textit{task function} $e(x, u, t)$, where $x = (q,\dot q)$ is the \textit{state} of the system, and $u=\tau$ the inputs (using a more general notation).
+	The task function must be defined by the user so that:
+	\begin{itemize}
+	\item $e=0$ implies that the task has been achieved;
+	\item the closer $e$ is to zero, the closer we are to achieving the task;
+	\item $e$ is sufficiently smooth to be differentiable for the required number of times.
+	\end{itemize}
+	Without loss of generality, let us assume that the error function is defined as the difference between a given time-invariant output function $y(x,u)$ and a time-varying reference value $y^{ref}(t)$:
 	\begin{equation}
 		e(x,u,t) = y(x,u) - y^{ref}(t)
 	\end{equation}
-	where $x = (q,\dot q)$ is the \textit{state} of the system, and $u=\tau$ the inputs (using a more general notation).
-	
-	Since QP problems requires an error function $e$ that must be affine in the decision variable $\ddot q$, a transformation is required (such the one to solve the controls in cartesian space); minimizing directly $e$ is not possible as in general it depends only on $q$ and $\dot q$, not $\ddot q$ explicitly.\\
-	To reach this goal we must impose the following two conditions on $e$ (or on it's derivative $\dot e,\ddot e$) for which:
+	Since LSP's can only minimize the norm of an affine function in the decision variable $\ddot q$, $\tau$, a transformation is required (as the one to solve the problem in Cartesian space); minimizing directly $e$ is not possible as in general it depends only on $q$ and $\dot q$, and not on $\ddot q$.
+	To reach this goal we can try to control how $e$ evolves in time, by imposing the following two conditions:
 	\begin{enumerate}
 		\item $\lim_{t\rightarrow \infty} e(t) = 0$;
 		\item the dynamics of $e$ is affine in the decision variables $\ddot q, u$.
 	\end{enumerate}
+	To see how we can meet these conditions we analyze separately three cases, depending on whether the output function $y$ depends on $q$, $\dot q$, or $\tau$.
 	
-	\paragraph{Velocity task function} Let's consider a case for which the error function depends just on the joint velocity (and eventually on time), so in the form $e(x,u,y) = e(\dot q, t) = y(\dot q) - y^{ref}(t)$; differentiating in time the error function provides
+	\subsubsection{Position task function} 
+	Consider a task depending only on the joint positions $q$, in the form $e(x,u,t) = e(q,t) = y(q) - y^{ref}(t)$.
+	An affine function in $\ddot q$ can be obtained by differentiation $e$ in time for two times:
+	\[ \xrightarrow{\d/\d t} \qquad \dot e = J\dot q - \dot y^{ref} \qquad \xrightarrow{\d/\d t} \qquad \ddot e = J \ddot q + \dot J \dot q - \ddot y^{ref} \tag{$\circ$}  \]
+	In this way the second requirement for $e$ is satisfies. 
+	Now we need to choose a control policy for $\ddot{e}$ so that $e$ converges to zero.
+	To do that we reduce the dynamic to a first-order differential equation. 
+	Introducing the augmented state variable $z \triangleq (e,\dot e)$, and considering for this case a proportional-derivative controller, the linear system boils down to:
+	\[ \dot z = \begin{pmatrix}
+		\dot e \\ \ddot e
+	\end{pmatrix} = \begin{bmatrix}
+		0 & I \\ -K_p & - K_d
+	\end{bmatrix} \begin{pmatrix}
+		e \\ \dot e
+	\end{pmatrix} = A z  \]
+	In this case matrices $K_p,K_d > 0$ must be chosen in such a way that $\ddot e = -K_p e - K_d \dot e$ is asymptotically stable ($A$ musth be Hurwitz). 
+	Since now also the first condition is met, we can rewrite ($\circ$) as
+	\begin{align*}
+		J\ddot q + \dot J \dot q - \ddot y^{ref} & = - K_p e - K_d \dot e \\
+		J\ddot q + \dot J \dot q + K_p e + K_d \dot e & = 0
+	\end{align*}
+	Linear system theory tells us that such dynamic is exponentially stable, however in this case no constraints have been considered (but they can limit the actual stabilization performance).
+
+
+	\subsubsection{Velocity task function} 
+	Let us consider a case for which the error function depends just on the joint velocity, so in the form $e(x,u,y) = e(\dot q, t) = y(\dot q) - y^{ref}(t)$; differentiating in time the error function provides
 	\[ \dot e(\dot q, t) = \dot y - \dot y^{ref} = \pdiff y {\dot q} \diff {\dot q} t - \dot y^{ref} = J \ddot q - \dot y^{ref} \]
 	This expression clearly satisfies the second requirement of being affine with respect to $\ddot q$; to ensure the second condition we can set $\dot e$ as proportional to the current error:
 	\[ \dot e = -K_p e \]
@@ -357,53 +406,128 @@
 	\end{aligned}
 	\end{equation}
 	
-	\paragraph{Position task function} Considering now a task depending just on the joint's position in the form $e(x,u,t) = e(q,t) = y(q) - y^{ref}(t)$, then an affine function in $\ddot q$ can be obtained considering 2 differentiation in time as follows:
-	\[ \xrightarrow{\d/\d t} \qquad \dot e = J\dot q - \dot y^{ref} \qquad \xrightarrow{\d/\d t} \qquad \ddot e = J \ddot q + \dot J \dot q - \ddot y^{ref} \tag{$\circ$}  \]
-	In this way the second requirement for $e$ is required. To study the first condition we need to reduce the dynamic to a first order exploiting the variable $z = (e,\dot e)$, and considering for this case a proportional-derivative controller the linear system boils down to
-	\[ \dot z = \begin{pmatrix}
-		\dot e \\ \ddot e
-	\end{pmatrix} = \begin{bmatrix}
-		0 & I \\ -K_p & - K_d
-	\end{bmatrix} \begin{pmatrix}
-		e \\ \dot e
-	\end{pmatrix} = A z  \]
-	In this case matrices $K_p,K_d > 0$ must be chosen in such a way that $\ddot e = -K_p e - K_d \dot e$ is asymptotically stable ($A$ musth be Hurwitz). Since now also the first condition is met, we can rewrite ($\circ$) as
-	\begin{align*}
-		J\ddot q + \dot J \dot q - \ddot y^{ref} & = - K_p e - K_d \dot e \\
-		J\ddot q + \dot J \dot q + K_p e + K_d \dot e & = 0
-	\end{align*}
 	
-	Linear theory suggests that such dynamic is exponentially stable, however in this case no constraints have been considered (but they can limit the actual stabilization performance).
-	
-	\paragraph{Input task function} The only way to build a task function $e(u, t)$ that depends just on the input torques $\tau = u$ is by ensuring that $e$ is actually affine in $u$ (that's a decision variable), i.e. must be of the form
+	\subsubsection{Input task function} The only way to build a task function $e(u, t)$ that depends just on the input torques $\tau = u$ is by ensuring that $e$ is actually affine in $u$ (which is a decision variable), i.e. must be of the form
 	\[ e(u,t) = A(t) u - b(t) \]
 	
-	\paragraph{Task summary} As just presented we might have 3 main kind of task function, respectively:
+	\subsubsection{Task summary} As just presented we might have 3 main kinds of task functions:
 	\begin{itemize}
-		\item one that's affine in the input $\tau = u$;
-		\item two that are non-linear functions of the states $x$ but for which an affine function of $\ddot q$ can be achieved by means of one or two differentiation in time for velocity and position tasks respectively.
+		\item affine functions of the input $\tau = u$;
+		\item nonlinear functions of the state $x$, for which an affine function of $\ddot q$ can be found by means of one/two differentiations in time for velocity and position tasks, respectively.
 	\end{itemize}
-	In general a combination of multiple tasks can be collapsed to a single task exploiting an "augmented" state vector $z = (\ddot q, u)$ that determines the following affine function:
+	In general, regardless of which task function we are working with, we can express any task function as an affine function of the decision variables $z = (\ddot q, u)$:
 	\[ g(z) = \begin{bmatrix}
 		A_x & A_u
 	\end{bmatrix} \begin{pmatrix}
 		\ddot q \\ u
 	\end{pmatrix} - b = Az - b \]
 	
-	\paragraph{QP-based control} The \textit{task-space inverse dynamics} (\textit{TSID}), also referred as \textit{QP-based control}, solves optimization problems in the for
+	\paragraph{QP-based control}  \textit{Task-Space Inverse Dynamics} (\textit{TSID}), also referred TO as \textit{QP-based control}, solves optimization problems in the form:
 	\begin{equation}
 	\begin{aligned}
-		\min_{z =(\ddot q, \tau)} \quad & \big\|Az-b \big\|^2 \\
-		\textrm{sub. to:} \quad & \begin{bmatrix}
+		\minimize_{z =(\ddot q, \tau)} \quad & \big\|Az-b \big\|^2 \\
+		\st \quad & \begin{bmatrix}
 			M & -I
 		\end{bmatrix} z = -h \\ 
-		& \textit{other constraints}
+		& \text{other constraints}
 	\end{aligned}
 	\end{equation}
-	This is a generalization of the QP joint space control in (\ref{eq:qp}), choosing $A = \begin{bmatrix} I & 0 \end{bmatrix}$ and $b = \ddot q^d$, or the cartesian space control in (\ref{eq:qpcartesian}), choosing $A = \begin{bmatrix} J & 0 \end{bmatrix}$ and $b = \ddot x^d - \dot J \dot q$.
+	This is a generalization of the QP joint-space control in (\ref{eq:qp}), choosing $A = \begin{bmatrix} I & 0 \end{bmatrix}$ and $b = \ddot q^d$, or the Cartesian-space control in (\ref{eq:qpcartesian}), choosing $A = \begin{bmatrix} J & 0 \end{bmatrix}$ and $b = \ddot x^d - \dot J \dot q$.
 	
-	\textbf{TODO: underactuated systems, rigid contacts, multi-task control}
-	
- 	
-	
+\subsection{Underactuated systems}
+TSID can easily deal with underactuated systems, which are systems that have less control inputs than degrees of freedom.
+So far, we have focused on robot manipulators, which are fully actuated because typically each joint is actuated by a motor.
+However, most mobile robots are underactuated. 
+Let us take, for instance, vehicles.
+Assuming a vehicle cannot detach from the ground, its configuration can be described with 3 variables: 2 for the position in the plane, and 1 for the orientation.
+However, a vehicle has typically only 2 actuators: the motor (which is commanded through the accelerator pedal) and the steering wheel.
+Therefore it is underactuated.
+The same applies to most aerial vehicles, which have 6 degrees of freedom, and typically 2-to-4 actuators.
+Underwater robots and legged robots are other examples of typically underactuated systems.
+
+Many underactuated robots can be modeled with a small modification to the dynamics equations of fully-actuated systems.
+Let us assume that we remove some motors from a robot manipulator, making it underactuated. 
+The effect that this would have on its dynamics is that the torque at the corresponding joints would be alway zero. 
+We can model this by introducing a selection matrix $S \in \R{n_a}{n}$, which selects the actuated joints of the vector $q$:
+\begin{eqs}{}
+q_{actuated} = S q = S \mat{q_{passive} \\ q_{actuated}}
+\end{eqs}
+The same matrix can be also used to modify the dynamics as:
+\begin{eqs}{}
+M \ddot q + h = S^\T \tau = \mat{0 \\ \tau}
+\end{eqs}
+We can see that the dynamics is still affine with respect to $\ddot q$ and $\tau$, therefore we can still use it as a constraint in TSID's QP.
+
+
+\subsection{Rigid Contacts}
+Rigid contacts are particularly hard to deal with because they constrain the motion of the robot.
+Let us suppose that a robot manipulator makes contact with a wall, using its end-effector.
+After making contact, the end-effector can no longer move in the direction of the wall, and if it tries, it may apply a large contact force that could lead to unpleasant consequences (either for the robot or for the wall).
+Therefore, we need the controller to be aware of this constraint. 
+This constraint could be modeled as an inequality constraint on the robot configuration, representing the fact that the position of the end-effector (or whatever point the robot is using for making contact) cannot penetrate the wall:
+\begin{eqs}{}
+c(q) \le \text{constant}
+\end{eqs}
+However, very often, once the robot has made contact with the environment, we want this contact to be maintained for a certain amount of time. 
+Therefore, for this time period, the contact constraint can be modeled using an equality constraint, representing the fact that the contact point(s) should not move at all:
+\begin{eqs}{}
+c(q) = \text{constant}
+\end{eqs}
+At this point, we should be familiar with the fact that we cannot include in TSID a constraint that depends only on $q$.
+Similarly to what we have already done for the task functions, we need to differentiate this constraint until it becomes a function of $\ddot q$:
+\begin{eqs}{}
+J_c \dot q = 0 \\
+J_c \ddot q + \dot{J}_c \dot q = 0
+\end{eqs}
+Besides modeling the motion constraints, rigid contacts also affect the system dynamics by means of the associated contact forces.
+Therefore, to account for rigid contact in TSID we need to introduce the contact forces $\lambda$ as decision variables, and account for them in the system dynamics.
+In conclusion, the QP problem for an underactuated system in rigid contact with the environment is:
+\begin{equation}
+	\begin{aligned}
+		\minimize_{z =(\ddot q, \tau, \lambda)} \quad & \big\|Az-b \big\|^2 \\
+		\st \quad & 
+		\begin{bmatrix}
+			M & -S^\T & J_c^\T \\ 
+			J_c & 0 & 0
+		\end{bmatrix} 
+		z 
+		= 
+		\mat{ -h \\ -\dot{J}_c \dot q} \\
+		& \text{other constraints}
+	\end{aligned}
+	\end{equation}
+
+
+
+\subsection{Multi-Task Control}
+Complex robots typically need to carry out multiple tasks at the same time.
+This is often the case even for robot manipulators because they typically have more degrees of freedom than the dimension of the main task they must perform.
+For instance, if we want to control the position and orientation of the end-effector of a robot manipulator, then the task has dimension 6.
+However, many robot manipulators have 7 degrees of freedom, which means that they are \emph{redundant} with respect to the task.
+In this case, it is recommended to introduce a secondary task in the control framework, to avoid that the uncontrolled degree(s) of freedom lead the robot state to drift and diverge, typically hitting joint limits or reaching undesirable configurations with low dexterity.
+
+Assume a robot is required to perform $N$ tasks, and each task is associated with a cost function $g_i$ defined as:
+\begin{eqs}{}
+g_i(z) = || A_i z - b_i ||^2, \qquad i=1, \dots, N
+\end{eqs}
+We can then achieve a multi-task control by formulating TSID's QP problem as:
+ \begin{equation}
+	\begin{aligned}
+		\minimize_{z =(\ddot q, \tau, \lambda)} \quad & \sum_{i=1}^N w_i \, g_i(z) \\
+		\st \quad & 
+		\begin{bmatrix}
+			M & -S^\T & J_c^\T \\ 
+			J_c & 0 & 0
+		\end{bmatrix} 
+		z 
+		= 
+		\mat{ -h \\ -\dot{J}_c \dot q} \\
+		& \text{other constraints},
+	\end{aligned}
+	\end{equation}
+where $w_i \in \Rv{}$ is a user-defined positive weight associated to task $i$.
+These weights can be used to define the relative importance between tasks.
+Higher priority tasks will be assigned higher weights, whereas lower priority tasks will have lower weights.
+A ratio of $10^3$ between the weights of two tasks typically leads in practice to a behavior that is indistinguishable from the one obtained with the null-space projection method used with Operational-Space control (Section~\ref{sssec:redundancy}).
+
 	
