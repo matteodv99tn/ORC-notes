@@ -1,18 +1,5 @@
 % !TEX root =  ../notes.tex
 \chapter{Reactive Controls}
-	Usually while dealing with manipulators (or robot in generals) we are interested in controlling their \textit{dynamics}, so affecting the system's behavior. Let us call $q \in \mathds R^n$ the \textit{Lagrangian coordinates} that are used to describe the system configuration, and denote with $\dot q \in \mathds R^n$ their velocity. The dynamic of the system is then described by the following nonlinear differential equation:
-	\begin{equation} \label{eq:temp:1}
-		M(q) \ddot q + C(q,\dot q) \dot q + g(q) = \tau + J(q)^\top w
-	\end{equation}
-	where $M\in \mathds R^{n\times n}$ is the symmetric positive-definite \textit{mass-matrix}, $C \in \mathds R^{n\times n}$ is a matrix that takes into account both centrifugal and Coriolis force, while $g \in \mathds R^n$ accounts for gravity; $\tau \in \mathds R^n$ contains the joint torques.
-	If the robot is in contact with the environment (suppose, without loss of generality, that the contact is at the end-effector), the dynamics also features the term $w \in \mathds R^6$, which is the contact \textit{wrench} (composed by a 3D force and a 3D moment), which is projected in joint space using the end-effector Jacobian $J \in \mathds R^{6 \times n}$. 
-	Often the terms $C$ and $g$ are condensed in the so-called \textit{bias forces} $h \in \mathds R^n$, rewriting \eqref{eq:temp:1} as:
-	\begin{equation} \label{eq:dynamic}
-		M(q) \ddot q + h(q,\dot q) = \tau + J(q)^\top w
-	\end{equation}
-
-	Note that, in general, $M, h$ and $J$ are nonlinear functions of the state $(q,\dot q)$, so linear control theory cannot be applied to control this class of dynamical systems. 
-	Nonetheless, \eqref{eq:dynamic} is linear with respect to $\ddot q$ and $\tau$ (once $q,\dot q$ and $w$ are fixed), which is an important property that can be exploited for its control.
 	
 \section{Joint-Space Motion Control}
 	The trajectory-tracking \textit{control} problem addresses the question of finding the control inputs $\tau$ that make the system follow a reference trajectory. 

@@ -1,5 +1,6 @@
 \input{Tex/setup.tex}
 \input{math_commands.tex}
+\graphicspath{{images/}}
 
 \begin{document}
 	
@@ -10,13 +11,11 @@
 %	\chapter{Introduction}
 %	\section{Goals of this course}
 %	To copy from notes of Nicolo Cavalieri.
-%	
-%	\section{Robot Dynamic Modeling (review)}
-%	To copy from notes of Nicolo Cavalieri.
 	
+	\input{Chapters/00-robot-dynamics.tex}
 	\input{Chapters/01-reactivecontrol.tex}
-	%\input{Chapters/02-optimalcontrol.tex}
-	%\input{Chapters/03-reinforcementlearning.tex}
+	\input{Chapters/02-optimalcontrol.tex}
+	\input{Chapters/03-reinforcementlearning.tex}
 	
 	\bibliographystyle{plain}
 	% argument is your BibTeX string definitions and bibliography database(s)
